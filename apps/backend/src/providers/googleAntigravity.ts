@@ -194,23 +194,67 @@ export class GoogleAntigravityProvider implements IProvider {
     let rawQuotaJson = '';
 
     // Step 2: Quota extraction
-    // Only call enterprise retrieveUserQuota endpoint if this is an enterprise GCP-managed account
-    if (!isPersonalAccount && companionProject && companionProject !== 'aicode-consumers') {
+    // Google Cloud Code PA provides `retrieveUserQuotaSummary` which works for both
+    // consumer accounts (project: 'aicode-consumers') and GCP enterprise projects.
+    const quotaProject = companionProject || 'aicode-consumers';
+    let quotaSummaryData: any = null;
+
+    try {
+      // 2a. Primary endpoint: retrieveUserQuotaSummary (grouped into 5h and weekly windows)
+      const summaryRes = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${creds.accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'antigravity/1.11.0'
+        },
+        body: JSON.stringify({
+          project: quotaProject
+        })
+      });
+
+      if (summaryRes.ok) {
+        quotaSummaryData = await summaryRes.json();
+        const groups = quotaSummaryData.groups || [];
+        for (const g of groups) {
+          const groupBuckets = g.buckets || [];
+          for (const b of groupBuckets) {
+            const fraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
+            buckets.push({
+              modelId: b.bucketId || 'quota',
+              tokenType: b.window ? b.window.toUpperCase() : 'QUOTA',
+              remainingFraction: Math.max(0, Math.min(1, fraction)),
+              remainingAmount: null,
+              limitAmount: null,
+              resetTime: b.resetTime || null,
+              usedPercent: Math.round((1 - fraction) * 100)
+            });
+          }
+        }
+      } else {
+        console.warn(`[GoogleAntigravity] retrieveUserQuotaSummary returned ${summaryRes.status}:`, await summaryRes.text());
+      }
+    } catch (err: any) {
+      console.warn('[GoogleAntigravity] Failed to fetch retrieveUserQuotaSummary:', err.message);
+    }
+
+    // 2b. Secondary fallback: retrieveUserQuota (per-model WTUS buckets)
+    if (buckets.length === 0) {
       try {
         const quotaRes = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${creds.accessToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': 'antigravity/1.11.0'
           },
           body: JSON.stringify({
-            project: companionProject
+            project: quotaProject
           })
         });
 
         if (quotaRes.ok) {
           const quotaData: any = await quotaRes.json();
-          rawQuotaJson = JSON.stringify(quotaData);
           const rawBuckets = quotaData.buckets || [];
           buckets = rawBuckets.map((b: any) => {
             const remainingFraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
@@ -227,7 +271,7 @@ export class GoogleAntigravityProvider implements IProvider {
 
             return {
               modelId: b.modelId || 'general',
-              tokenType: b.tokenType || 'REQUESTS',
+              tokenType: b.tokenType || 'WTUS',
               remainingFraction: Math.max(0, Math.min(1, remainingFraction)),
               remainingAmount,
               limitAmount,
@@ -235,19 +279,26 @@ export class GoogleAntigravityProvider implements IProvider {
               usedPercent: Math.round((1 - remainingFraction) * 100)
             };
           });
+          quotaSummaryData = quotaData;
         } else {
           const errText = await quotaRes.text();
-          console.warn(`[GoogleAntigravity] Enterprise quota query returned ${quotaRes.status}:`, errText);
-          if (quotaRes.status === 403) {
-            throw new Error(`Enterprise license required for GCP project '${companionProject}'. Contact your administrator or ensure Gemini Code Assist is enabled.`);
-          }
+          console.warn(`[GoogleAntigravity] retrieveUserQuota returned ${quotaRes.status}:`, errText);
         }
       } catch (err: any) {
-        if (err.message.includes('Enterprise license required')) {
-          throw err;
-        }
-        console.warn('[GoogleAntigravity] Failed to fetch enterprise quota:', err.message);
+        console.warn('[GoogleAntigravity] Failed to fetch retrieveUserQuota:', err.message);
       }
+    }
+
+    if (quotaSummaryData) {
+      rawQuotaJson = JSON.stringify({
+        accountType: isPersonalAccount ? 'personal' : 'enterprise',
+        tier,
+        planName,
+        companionProject,
+        gcpManaged,
+        quotaSummary: quotaSummaryData,
+        loadData
+      }, null, 2);
     }
 
     // For Personal / Consumer accounts (or fallback if enterprise quota API yields no buckets)

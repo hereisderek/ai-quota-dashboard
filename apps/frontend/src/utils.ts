@@ -73,7 +73,10 @@ export function formatModelName(modelId: string): string {
     'claude-7d-weekly': 'Claude 7-Day Weekly Limit',
     'claude-output-tokens': 'Generated Output Tokens',
     'claude-total-tokens': 'Total Tokens Processed',
-    'claude-code-tokens': 'Claude Code Tokens',
+    'gemini-weekly': 'Gemini Models (Weekly)',
+    'gemini-5h': 'Gemini Models (5-Hour)',
+    '3p-weekly': 'Claude & GPT (Weekly)',
+    '3p-5h': 'Claude & GPT (5-Hour)',
     'daily-requests': 'Daily Request Allowance',
     'copilot-seats': 'Copilot Active Seats',
     'github-api-quota': 'GitHub API Rate Limits'

@@ -343,20 +343,21 @@ export const snapshotRepo = {
 
   getLatestForAccount(accountId: string): QuotaSnapshotRow[] {
     const db = getDb();
+    // Find the latest recorded_at timestamp for this account
+    const latestRow = db.prepare('SELECT MAX(recorded_at) as max_time FROM quota_snapshots WHERE account_id = ?').get(accountId) as { max_time: string | null } | undefined;
+    if (!latestRow || !latestRow.max_time) return [];
+
+    // Return snapshots recorded in the latest polling batch (within 10 seconds of max_time)
+    // so obsolete/migrated model identifiers from past batches do not linger as zombie items
+    const latestTime = new Date(latestRow.max_time).getTime();
+    const batchStartTime = new Date(latestTime - 10000).toISOString();
+
     const stmt = db.prepare(`
-      SELECT s.*
-      FROM quota_snapshots s
-      INNER JOIN (
-        SELECT account_id, model_id, MAX(recorded_at) as max_time
-        FROM quota_snapshots
-        WHERE account_id = ?
-        GROUP BY account_id, model_id
-      ) latest ON s.account_id = latest.account_id 
-             AND s.model_id = latest.model_id 
-             AND s.recorded_at = latest.max_time
-      ORDER BY s.model_id ASC
+      SELECT * FROM quota_snapshots
+      WHERE account_id = ? AND recorded_at >= ?
+      ORDER BY model_id ASC
     `);
-    return stmt.all(accountId) as unknown as QuotaSnapshotRow[];
+    return stmt.all(accountId, batchStartTime) as unknown as QuotaSnapshotRow[];
   },
 
   getHistory(accountId: string, hours = 24): QuotaSnapshotRow[] {

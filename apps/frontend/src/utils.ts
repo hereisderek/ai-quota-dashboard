@@ -57,8 +57,10 @@ export function formatModelName(modelId: string): string {
   const map: Record<string, string> = {
     'gemini-ultra': 'Gemini Ultra',
     'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.5-flash': 'Gemini 2.5 Flash',
     'gemini-3.8-flash': 'Gemini 3.8 Flash',
     'gemini-3-pro-preview': 'Gemini 3 Pro',
+    'gemini-3-pro': 'Gemini 3 Pro',
     'gemini-3.1-pro': 'Gemini 3.1 Pro',
     'gemini-3.5-flash': 'Gemini 3.5 Flash',
     'claude-3-5-sonnet': 'Claude 3.5 Sonnet',

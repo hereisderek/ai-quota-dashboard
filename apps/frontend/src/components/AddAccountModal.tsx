@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Sparkles, Bot, Github, Globe, ExternalLink, Key, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Sparkles, Bot, Github, Globe, ExternalLink } from 'lucide-react';
 
 interface AddAccountModalProps {
   isOpen: boolean;
@@ -29,6 +29,25 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
   const [customMethod, setCustomMethod] = useState<'GET' | 'POST'>('GET');
   const [customToken, setCustomToken] = useState('');
   const [customRemainingPath, setCustomRemainingPath] = useState('remaining_fraction');
+
+  // Handle Escape key & body scroll lock
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -86,7 +105,10 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-fade-in">
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-fade-in"
+    >
       <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-lg w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-5 border-b border-zinc-100 dark:border-zinc-800">
@@ -232,7 +254,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
                     <button
                       type="button"
                       onClick={() => setGoogleManual(false)}
-                      className="text-xs text-zinc-400 hover:text-zinc-600"
+                      className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                     >
                       Back to OAuth
                     </button>

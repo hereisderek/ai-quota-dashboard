@@ -5,7 +5,7 @@ import { OverviewStats } from './components/OverviewStats';
 import { AccountCard } from './components/AccountCard';
 import { AddAccountModal } from './components/AddAccountModal';
 import { SettingsModal } from './components/SettingsModal';
-import { Plus, CheckCircle2, AlertCircle, Sparkles, Filter } from 'lucide-react';
+import { Plus, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
 export function App() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -144,7 +144,13 @@ export function App() {
             Loading quota streams...
           </div>
         ) : filteredAccounts.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className={
+            filteredAccounts.length === 1
+              ? "grid grid-cols-1 max-w-2xl mx-auto"
+              : filteredAccounts.length === 2
+              ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto"
+              : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          }>
             {filteredAccounts.map(account => (
               <AccountCard
                 key={account.id}

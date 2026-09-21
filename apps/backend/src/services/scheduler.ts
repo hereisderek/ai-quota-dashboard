@@ -58,6 +58,17 @@ class QuotaScheduler {
       const status = isExhausted ? 'rate_limited' : 'active';
       accountRepo.updateStatus(account.id, status, null);
 
+      // Persist learned tier into account credentials
+      if (snapshot.tier) {
+        try {
+          const creds = JSON.parse(account.credentials);
+          if (creds.tier !== snapshot.tier) {
+            creds.tier = snapshot.tier;
+            accountRepo.updateCredentials(account.id, JSON.stringify(creds));
+          }
+        } catch {}
+      }
+
       // Parse & scrub raw response for client delivery
       let parsedRaw: any = null;
       if (snapshot.rawJson) {

@@ -280,6 +280,12 @@ export const accountRepo = {
     db.prepare('UPDATE accounts SET credentials = ?, updated_at = ? WHERE id = ?').run(credentials, now, id);
   },
 
+  updateEmail(id: string, email: string): void {
+    const db = getDb();
+    const now = new Date().toISOString();
+    db.prepare('UPDATE accounts SET email = ?, updated_at = ? WHERE id = ?').run(email, now, id);
+  },
+
   updateStatus(id: string, status: 'active' | 'rate_limited' | 'error' | 'disabled', lastError?: string | null): void {
     const db = getDb();
     const now = new Date().toISOString();

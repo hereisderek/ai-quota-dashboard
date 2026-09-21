@@ -22,6 +22,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
   const [email, setEmail] = useState('');
 
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [anthropicMode, setAnthropicMode] = useState<'sub' | 'api'>('sub');
   const [githubPat, setGithubPat] = useState('');
   const [githubOrg, setGithubOrg] = useState('');
 
@@ -45,7 +46,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      document.body.style.overflow = 'unset';
     };
   }, [isOpen, onClose]);
 
@@ -64,7 +65,11 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
       creds = { refreshToken, accessToken, email };
     } else if (activeTab === 'anthropic') {
       providerId = 'anthropic';
-      creds = { apiKey: anthropicKey };
+      if (anthropicMode === 'sub') {
+        creds = { isSubscription: true, authType: 'claude_sub' };
+      } else {
+        creds = { apiKey: anthropicKey };
+      }
     } else if (activeTab === 'github') {
       providerId = 'github-copilot';
       creds = { token: githubPat, org: githubOrg || undefined };
@@ -273,37 +278,81 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClos
 
           {activeTab === 'anthropic' && (
             <form onSubmit={handleSubmitManual} className="space-y-3">
+              {/* Mode Toggle */}
+              <div className="flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1 border border-zinc-200/60 dark:border-zinc-700/60 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setAnthropicMode('sub')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition ${
+                    anthropicMode === 'sub'
+                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
+                  }`}
+                >
+                  Claude Subscription
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnthropicMode('api')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition ${
+                    anthropicMode === 'api'
+                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
+                  }`}
+                >
+                  Developer API Key
+                </button>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">Account Label</label>
                 <input
                   type="text"
-                  placeholder="e.g. Anthropic Primary"
+                  placeholder={anthropicMode === 'sub' ? "e.g. Claude Team Subscription" : "e.g. Anthropic Primary"}
                   value={label}
                   onChange={e => setLabel(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">Anthropic API Key (or Admin Key)</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="sk-ant-api03-... or sk-ant-admin..."
-                  value={anthropicKey}
-                  onChange={e => setAnthropicKey(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-                <p className="text-[11px] text-zinc-400 mt-1">
-                  Supports standard keys (via rate-limit headers) or Admin keys (<code className="font-mono">sk-ant-admin...</code>).
-                </p>
-              </div>
+
+              {anthropicMode === 'sub' ? (
+                <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-semibold text-amber-900 dark:text-amber-200">
+                        Claude Code & Subscription Quota
+                      </p>
+                      <p className="text-amber-700 dark:text-amber-400 text-[11px] mt-0.5">
+                        Monitors 5-Hour rolling session limit and 7-Day weekly token utilization automatically from <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">~/.claude.json</code> or <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">/data/claude.json</code>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">Anthropic API Key (or Admin Key)</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="sk-ant-api03-... or sk-ant-admin..."
+                    value={anthropicKey}
+                    onChange={e => setAnthropicKey(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Supports standard keys (via rate-limit headers) or Admin keys (<code className="font-mono">sk-ant-admin...</code>).
+                  </p>
+                </div>
+              )}
+
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="py-2 px-4 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : 'Connect Claude'}
+                  {isSubmitting ? 'Saving...' : anthropicMode === 'sub' ? 'Connect Subscription' : 'Connect Claude API'}
                 </button>
               </div>
             </form>

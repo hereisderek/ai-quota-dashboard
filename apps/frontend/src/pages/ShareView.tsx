@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Sparkles, 
   Bot, 
@@ -71,6 +71,42 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
     setIsRefreshing(true);
     fetchData();
   };
+
+  // Responsive window width tracking for masonry flex layout
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const accounts = data?.accounts || [];
+
+  const numColumns = useMemo(() => {
+    if (windowWidth < 768 || accounts.length <= 1) return 1;
+    return 2;
+  }, [windowWidth, accounts.length]);
+
+  const accountColumns = useMemo(() => {
+    if (numColumns <= 1) return [accounts];
+    const cols: typeof accounts[] = Array.from({ length: numColumns }, () => []);
+    const heights = new Array(numColumns).fill(0);
+
+    for (const acc of accounts) {
+      let shortestCol = 0;
+      for (let i = 1; i < numColumns; i++) {
+        if (heights[i] < heights[shortestCol]) {
+          shortestCol = i;
+        }
+      }
+      cols[shortestCol].push(acc);
+      heights[shortestCol] += 180 + (acc.buckets?.length || 1) * 65;
+    }
+    return cols;
+  }, [accounts, numColumns]);
 
   const getProviderBrand = (providerId: string) => {
     switch (providerId) {
@@ -170,105 +206,119 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
           </div>
         ) : data && data.accounts.length > 0 ? (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {data.accounts.map(acc => {
-                const brand = getProviderBrand(acc.providerId);
-                const planBadge = acc.tier === 'PRO' ? 'Google AI Pro' : acc.tier === 'ULTRA' ? 'Google AI Ultra' : acc.tier;
+            <div className={
+              accounts.length === 1
+                ? "max-w-2xl mx-auto w-full"
+                : "flex flex-col md:flex-row gap-6 items-start w-full"
+            }>
+              {accountColumns.map((colAccounts, colIdx) => (
+                <div key={colIdx} className="flex-1 flex flex-col gap-6 min-w-0 w-full">
+                  {colAccounts.map(acc => {
+                    const brand = getProviderBrand(acc.providerId);
+                    const planBadge = acc.providerId === 'google-antigravity'
+                      ? (acc.tier === 'PRO' ? 'Google AI Pro' : acc.tier === 'ULTRA' ? 'Google AI Ultra' : acc.tier)
+                      : acc.providerId === 'anthropic'
+                      ? (acc.tier?.toLowerCase().includes('team') ? 'Claude Team' : acc.tier?.toLowerCase().includes('pro') ? 'Claude Pro' : acc.tier)
+                      : acc.tier;
 
-                return (
-                  <div
-                    key={acc.id}
-                    className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-5 shadow-sm"
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
-                          {brand.icon}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                              {brand.name}
-                            </h3>
-                            {planBadge && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                                {planBadge}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-zinc-400">
-                            {acc.label}
-                          </span>
-                        </div>
-                      </div>
-
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                        {acc.status === 'active' ? 'Active' : acc.status}
-                      </span>
-                    </div>
-
-                    {/* Model Buckets */}
-                    <div className="space-y-3">
-                      {acc.buckets && acc.buckets.length > 0 ? (
-                        acc.buckets.map((b, idx) => {
-                          const colors = getQuotaColor(b.remainingFraction);
-                          const remainingPercent = Math.round(b.remainingFraction * 100);
-                          const countdown = formatCountdown(b.resetTime);
-
-                          return (
-                            <div
-                              key={idx}
-                              className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 space-y-2.5"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 truncate">
-                                  {formatModelName(b.modelId)}
-                                </span>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  {b.remainingAmount != null && (
-                                    <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/50 dark:border-zinc-700/50">
-                                      {b.limitAmount != null
-                                        ? `${b.remainingAmount.toLocaleString()} / ${b.limitAmount.toLocaleString()}`
-                                        : `${b.remainingAmount.toLocaleString()} left`}
-                                    </span>
-                                  )}
-                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
-                                    {remainingPercent}%
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="w-full h-2 rounded-full bg-zinc-200/80 dark:bg-zinc-700/60 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-700 ease-out ${colors.bar}`}
-                                  style={{ width: `${remainingPercent}%` }}
-                                />
-                              </div>
-
-                              <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-0.5">
-                                <span className="uppercase tracking-wider font-mono text-[10px] text-zinc-400 dark:text-zinc-500">
-                                  {b.tokenType || 'Requests'}
-                                </span>
-                                {countdown && (
-                                  <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-zinc-400 shrink-0 whitespace-nowrap">
-                                    <Clock className="w-3 h-3 text-zinc-400" />
-                                    <span>{countdown}</span>
+                    return (
+                      <div
+                        key={acc.id}
+                        className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-5 shadow-sm"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
+                              {brand.icon}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                                  {brand.name}
+                                </h3>
+                                {planBadge && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                    {planBadge}
                                   </span>
                                 )}
                               </div>
+                              <span className="text-xs text-zinc-400">
+                                {acc.label}
+                              </span>
                             </div>
-                          );
-                        })
-                      ) : (
-                        <div className="py-6 text-center text-xs text-zinc-400">
-                          No model quotas recorded
+                          </div>
+
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                            {acc.status === 'active' ? 'Active' : acc.status}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+
+                        {/* Model Buckets */}
+                        <div className="space-y-3">
+                          {acc.buckets && acc.buckets.length > 0 ? (
+                            acc.buckets.map((b, idx) => {
+                              const colors = getQuotaColor(b.remainingFraction);
+                              const remainingPercent = Math.round(b.remainingFraction * 100);
+                              const countdown = formatCountdown(b.resetTime);
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 space-y-2.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                                      {formatModelName(b.modelId)}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {b.remainingAmount != null && (
+                                        <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/50 dark:border-zinc-700/50">
+                                          {b.limitAmount != null
+                                            ? b.limitAmount === 100
+                                              ? `${b.remainingAmount}% avail`
+                                              : `${b.remainingAmount.toLocaleString()} / ${b.limitAmount.toLocaleString()}`
+                                            : `${b.remainingAmount.toLocaleString()} ${b.tokenType ? b.tokenType.toLowerCase() : 'tokens'}`}
+                                        </span>
+                                      )}
+                                      <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
+                                        {remainingPercent}%
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="w-full h-2 rounded-full bg-zinc-200/80 dark:bg-zinc-700/60 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-700 ease-out ${colors.bar}`}
+                                      style={{ width: `${remainingPercent}%` }}
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-0.5">
+                                    <span className="uppercase tracking-wider font-mono text-[10px] text-zinc-400 dark:text-zinc-500">
+                                      {b.tokenType || 'Requests'}
+                                    </span>
+                                    {countdown && (
+                                      <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-zinc-400 shrink-0 whitespace-nowrap">
+                                        <Clock className="w-3 h-3 text-zinc-400" />
+                                        <span>{countdown}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="py-6 text-center text-xs text-zinc-400">
+                              No model quotas recorded
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         ) : (

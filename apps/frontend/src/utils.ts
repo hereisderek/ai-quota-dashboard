@@ -69,6 +69,11 @@ export function formatModelName(modelId: string): string {
     'claude-opus-4.6': 'Claude Opus 4.6',
     'claude-requests': 'Claude Requests Cap',
     'claude-tokens': 'Claude Token Quota',
+    'claude-5h-session': 'Claude 5-Hour Session',
+    'claude-7d-weekly': 'Claude 7-Day Weekly Limit',
+    'claude-output-tokens': 'Generated Output Tokens',
+    'claude-total-tokens': 'Total Tokens Processed',
+    'claude-code-tokens': 'Claude Code Tokens',
     'daily-requests': 'Daily Request Allowance',
     'copilot-seats': 'Copilot Active Seats',
     'github-api-quota': 'GitHub API Rate Limits'
@@ -76,3 +81,4 @@ export function formatModelName(modelId: string): string {
 
   return map[modelId] || modelId.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
+

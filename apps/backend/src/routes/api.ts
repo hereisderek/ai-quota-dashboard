@@ -30,6 +30,9 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
         const creds = JSON.parse(acc.credentials);
         if (creds.tier) tier = creds.tier;
         if (creds.plan) tier = creds.plan;
+        if ((!creds.tier || creds.tier === 'STANDARD') && acc.provider_id === 'anthropic') {
+          tier = 'Claude Team';
+        }
       } catch {}
 
       // Mask any email address in the label to prevent public PII exposure
@@ -158,7 +161,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
           status: acc.status,
           lastError: acc.last_error,
           lastPolledAt: acc.last_polled_at,
-          tier: creds.tier || 'STANDARD',
+          tier: creds.tier || (rawResponse?.source === 'claude_subscription' || acc.provider_id === 'anthropic' ? 'Claude Team' : 'STANDARD'),
           plan: creds.plan,
           credentials: sanitizedCreds,
           rawResponse,

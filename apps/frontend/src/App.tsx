@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuotaStream } from './hooks/useQuotaStream';
 import { Header } from './components/Header';
 import { OverviewStats } from './components/OverviewStats';
@@ -92,11 +92,51 @@ export function App() {
     }
   }, [reload, reloadMetadata]);
 
+  // Responsive window width tracking for masonry flex layout
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Filtered accounts
   const filteredAccounts = accounts.filter(acc => {
     if (selectedProviderFilter === 'all') return true;
     return acc.providerId === selectedProviderFilter;
   });
+
+  // Calculate dynamic masonry flex columns
+  const numColumns = useMemo(() => {
+    if (windowWidth < 768 || filteredAccounts.length <= 1) return 1;
+    if (windowWidth < 1280 || filteredAccounts.length === 2) return 2;
+    return Math.min(filteredAccounts.length, 3);
+  }, [windowWidth, filteredAccounts.length]);
+
+  // Distribute accounts into columns based on height/weight to stack smaller cards vertically
+  const accountColumns = useMemo(() => {
+    if (numColumns <= 1) return [filteredAccounts];
+
+    const cols: typeof filteredAccounts[] = Array.from({ length: numColumns }, () => []);
+    const heights = new Array(numColumns).fill(0);
+
+    for (const account of filteredAccounts) {
+      // Find column with least accumulated height
+      let shortestCol = 0;
+      for (let i = 1; i < numColumns; i++) {
+        if (heights[i] < heights[shortestCol]) {
+          shortestCol = i;
+        }
+      }
+      cols[shortestCol].push(account);
+      // Card weight: base 180px + 65px per bucket + 50px if error
+      heights[shortestCol] += 180 + (account.buckets?.length || 1) * 65 + (account.lastError ? 50 : 0);
+    }
+    return cols;
+  }, [filteredAccounts, numColumns]);
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
@@ -180,18 +220,22 @@ export function App() {
         ) : filteredAccounts.length > 0 ? (
           <div className={
             filteredAccounts.length === 1
-              ? "grid grid-cols-1 max-w-2xl mx-auto"
+              ? "max-w-2xl mx-auto w-full"
               : filteredAccounts.length === 2
-              ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto"
-              : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              ? "flex flex-col md:flex-row gap-6 items-start max-w-5xl mx-auto w-full"
+              : "flex flex-col md:flex-row gap-6 items-start w-full"
           }>
-            {filteredAccounts.map(account => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                onRefresh={refreshAccount}
-                onDelete={deleteAccount}
-              />
+            {accountColumns.map((colAccounts, colIdx) => (
+              <div key={colIdx} className="flex-1 flex flex-col gap-6 min-w-0 w-full">
+                {colAccounts.map(account => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onRefresh={refreshAccount}
+                    onDelete={deleteAccount}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         ) : (

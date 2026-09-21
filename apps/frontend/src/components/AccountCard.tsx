@@ -88,12 +88,31 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
   const rawTier = (account as any).tier || (account as any).plan || (account.credentials?.tier) || (account.credentials?.plan);
   let planBadge: string | null = null;
   if (rawTier) {
-    if (rawTier === 'PRO' || rawTier.includes('Pro') || rawTier.includes('standard')) {
-      planBadge = 'Google AI Pro';
-    } else if (rawTier === 'ULTRA' || rawTier.includes('Ultra')) {
-      planBadge = 'Google AI Ultra';
-    } else if (rawTier === 'FREE' || rawTier.includes('free')) {
-      planBadge = 'Free Tier';
+    if (account.providerId === 'google-antigravity') {
+      if (rawTier === 'PRO' || rawTier.includes('Pro') || rawTier.includes('standard')) {
+        planBadge = 'Google AI Pro';
+      } else if (rawTier === 'ULTRA' || rawTier.includes('Ultra')) {
+        planBadge = 'Google AI Ultra';
+      } else if (rawTier === 'FREE' || rawTier.includes('free')) {
+        planBadge = 'Free Tier';
+      } else {
+        planBadge = rawTier;
+      }
+    } else if (account.providerId === 'anthropic') {
+      const lower = rawTier.toLowerCase();
+      if (lower.includes('team')) {
+        planBadge = 'Claude Team';
+      } else if (lower.includes('pro')) {
+        planBadge = 'Claude Pro';
+      } else if (lower.includes('max')) {
+        planBadge = 'Claude Max';
+      } else if (rawTier === 'ORGANIZATION') {
+        planBadge = 'Claude Org';
+      } else if (rawTier === 'API_KEY') {
+        planBadge = 'Claude API';
+      } else {
+        planBadge = rawTier;
+      }
     } else {
       planBadge = rawTier;
     }
@@ -195,8 +214,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
                       {bucket.remainingAmount != null && (
                         <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/50 dark:border-zinc-700/50">
                           {bucket.limitAmount != null
-                            ? `${bucket.remainingAmount.toLocaleString()} / ${bucket.limitAmount.toLocaleString()}`
-                            : `${bucket.remainingAmount.toLocaleString()} left`}
+                            ? bucket.limitAmount === 100
+                              ? `${bucket.remainingAmount}% avail`
+                              : `${bucket.remainingAmount.toLocaleString()} / ${bucket.limitAmount.toLocaleString()}`
+                            : `${bucket.remainingAmount.toLocaleString()} ${bucket.tokenType ? bucket.tokenType.toLowerCase() : 'tokens'}`}
                         </span>
                       )}
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>

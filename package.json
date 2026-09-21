@@ -1,0 +1,15 @@
+{
+  "name": "ai-quota-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "start": "npm run start -w apps/backend",
+    "dev:backend": "npm run dev -w apps/backend",
+    "dev:frontend": "npm run dev -w apps/frontend"
+  }
+}

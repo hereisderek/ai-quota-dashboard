@@ -1,0 +1,24 @@
+services:
+  ai-quota-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-quota-dashboard
+    restart: unless-stopped
+    ports:
+      - "3456:3456"
+    volumes:
+      # Persistent storage for SQLite database (quota.db) and accounts/tokens (accounts.json)
+      # Can be initially empty; the container will auto-populate and initialize on first boot.
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - PORT=3456
+      - HOST=0.0.0.0
+      - AUTH_MODE=none
+      # To enable security, set:
+      # - AUTH_MODE=token
+      # - AUTH_TOKEN=your-secret-token
+      # - PUBLIC_URL=http://localhost:3456
+    env_file:
+      - .env

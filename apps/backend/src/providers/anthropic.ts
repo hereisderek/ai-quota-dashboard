@@ -39,6 +39,8 @@ export class AnthropicProvider implements IProvider {
               modelId: item.model || 'claude-overall',
               tokenType: item.type || 'REQUESTS',
               remainingFraction: fraction,
+              remainingAmount: remaining,
+              limitAmount: limit,
               resetTime: item.resets_at || null,
               usedPercent: Math.round((1 - fraction) * 100)
             });
@@ -83,6 +85,8 @@ export class AnthropicProvider implements IProvider {
         modelId: 'claude-requests',
         tokenType: 'REQUESTS',
         remainingFraction: frac,
+        remainingAmount: reqRemaining,
+        limitAmount: reqLimit,
         resetTime: reqReset || null,
         usedPercent: Math.round((1 - frac) * 100)
       });
@@ -94,6 +98,8 @@ export class AnthropicProvider implements IProvider {
         modelId: 'claude-tokens',
         tokenType: 'TOKENS',
         remainingFraction: frac,
+        remainingAmount: tokenRemaining,
+        limitAmount: tokenLimit,
         resetTime: tokenReset || null,
         usedPercent: Math.round((1 - frac) * 100)
       });

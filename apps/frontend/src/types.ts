@@ -2,6 +2,8 @@ export interface BucketInfo {
   modelId: string;
   tokenType: string;
   remainingFraction: number; // 0.0 to 1.0
+  remainingAmount?: number | null; // Raw remaining tokens/requests count
+  limitAmount?: number | null; // Raw total capacity/limit
   resetTime: string | null;
   usedPercent: number;
   recordedAt?: string;
@@ -19,6 +21,7 @@ export interface Account {
   tier?: string;
   plan?: string;
   credentials: Record<string, any>;
+  rawResponse?: any;
   createdAt: string;
   updatedAt: string;
   buckets: BucketInfo[];

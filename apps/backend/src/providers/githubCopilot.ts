@@ -42,10 +42,13 @@ export class GitHubCopilotProvider implements IProvider {
           const activeSeats = seatBreakdown.active_this_cycle || 0;
           const remainingFraction = Math.max(0, 1 - (activeSeats / totalSeats));
 
+          const remainingSeats = Math.max(0, totalSeats - activeSeats);
           buckets.push({
             modelId: 'copilot-seats',
             tokenType: 'SEATS',
             remainingFraction,
+            remainingAmount: remainingSeats,
+            limitAmount: totalSeats,
             resetTime: null,
             usedPercent: Math.round((activeSeats / totalSeats) * 100)
           });
@@ -82,6 +85,8 @@ export class GitHubCopilotProvider implements IProvider {
             modelId: 'github-api-quota',
             tokenType: 'REQUESTS',
             remainingFraction: frac,
+            remainingAmount: core.remaining,
+            limitAmount: core.limit || 1,
             resetTime: resetDate,
             usedPercent: Math.round((1 - frac) * 100)
           });

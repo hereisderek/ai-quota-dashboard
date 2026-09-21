@@ -29,6 +29,8 @@ export interface QuotaSnapshotRow {
   model_id: string;
   token_type: string;
   remaining_fraction: number;
+  remaining_amount?: number | null;
+  limit_amount?: number | null;
   reset_time: string | null;
   raw_json: string | null;
   recorded_at: string;
@@ -118,6 +120,8 @@ function initSchema(db: DatabaseSync): void {
       model_id TEXT NOT NULL,
       token_type TEXT NOT NULL,
       remaining_fraction REAL NOT NULL,
+      remaining_amount REAL,
+      limit_amount REAL,
       reset_time TEXT,
       raw_json TEXT,
       recorded_at TEXT NOT NULL
@@ -126,6 +130,21 @@ function initSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_snapshots_account ON quota_snapshots(account_id, recorded_at DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_provider ON quota_snapshots(provider_id, recorded_at DESC);
   `);
+
+  // Migration: Ensure remaining_amount & limit_amount columns exist
+  try {
+    const snapCols = db.prepare('PRAGMA table_info(quota_snapshots)').all() as Array<{ name: string }>;
+    if (!snapCols.some(col => col.name === 'remaining_amount')) {
+      db.exec('ALTER TABLE quota_snapshots ADD COLUMN remaining_amount REAL;');
+      console.log('[DB] Migrated quota_snapshots: added remaining_amount column');
+    }
+    if (!snapCols.some(col => col.name === 'limit_amount')) {
+      db.exec('ALTER TABLE quota_snapshots ADD COLUMN limit_amount REAL;');
+      console.log('[DB] Migrated quota_snapshots: added limit_amount column');
+    }
+  } catch (err) {
+    console.warn('[DB] snapshot columns check error:', err);
+  }
 
   // Settings key-value store
   db.exec(`
@@ -291,14 +310,16 @@ export const snapshotRepo = {
     model_id: string;
     token_type: string;
     remaining_fraction: number;
+    remaining_amount?: number | null;
+    limit_amount?: number | null;
     reset_time?: string | null;
     raw_json?: string | null;
   }): void {
     const db = getDb();
     const now = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO quota_snapshots (account_id, provider_id, model_id, token_type, remaining_fraction, reset_time, raw_json, recorded_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO quota_snapshots (account_id, provider_id, model_id, token_type, remaining_fraction, remaining_amount, limit_amount, reset_time, raw_json, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       snapshot.account_id,
@@ -306,6 +327,8 @@ export const snapshotRepo = {
       snapshot.model_id,
       snapshot.token_type,
       snapshot.remaining_fraction,
+      snapshot.remaining_amount ?? null,
+      snapshot.limit_amount ?? null,
       snapshot.reset_time ?? null,
       snapshot.raw_json ?? null,
       now

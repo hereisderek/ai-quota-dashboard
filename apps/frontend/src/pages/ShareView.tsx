@@ -225,9 +225,18 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
                                 <span className="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 truncate">
                                   {formatModelName(b.modelId)}
                                 </span>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
-                                  {remainingPercent}%
-                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {b.remainingAmount != null && (
+                                    <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/50 dark:border-zinc-700/50">
+                                      {b.limitAmount != null
+                                        ? `${b.remainingAmount.toLocaleString()} / ${b.limitAmount.toLocaleString()}`
+                                        : `${b.remainingAmount.toLocaleString()} left`}
+                                    </span>
+                                  )}
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
+                                    {remainingPercent}%
+                                  </span>
+                                </div>
                               </div>
 
                               <div className="w-full h-2 rounded-full bg-zinc-200/80 dark:bg-zinc-700/60 overflow-hidden">

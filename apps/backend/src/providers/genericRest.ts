@@ -71,10 +71,15 @@ export class GenericRestProvider implements IProvider {
 
     fraction = Math.max(0, Math.min(1, fraction));
 
+    const remainingAmount = typeof remainingVal === 'number' ? remainingVal : null;
+    const limitAmount = typeof totalVal === 'number' ? totalVal : null;
+
     buckets.push({
       modelId: creds.modelId || account.label || 'api-quota',
       tokenType: creds.tokenType || 'CREDITS',
       remainingFraction: fraction,
+      remainingAmount,
+      limitAmount,
       resetTime: typeof resetVal === 'string' ? resetVal : null,
       usedPercent: Math.round((1 - fraction) * 100)
     });

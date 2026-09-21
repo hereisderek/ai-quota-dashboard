@@ -88,14 +88,15 @@ export function useQuotaStream() {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'QUOTA_UPDATED') {
-              const { accountId, buckets, status, lastPolledAt } = data.payload;
+              const { accountId, buckets, status, lastPolledAt, rawResponse } = data.payload;
               setAccounts(prev => prev.map(acc => {
                 if (acc.id === accountId) {
                   return {
                     ...acc,
                     status: status || acc.status,
                     lastPolledAt: lastPolledAt || new Date().toISOString(),
-                    buckets: buckets || acc.buckets
+                    buckets: buckets || acc.buckets,
+                    rawResponse: rawResponse !== undefined ? rawResponse : acc.rawResponse
                   };
                 }
                 return acc;

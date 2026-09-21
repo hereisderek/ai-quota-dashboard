@@ -8,7 +8,12 @@ import {
   Sparkles,
   Bot,
   Github,
-  Globe
+  Globe,
+  ChevronDown,
+  Code2,
+  Copy,
+  Check,
+  Server
 } from 'lucide-react';
 import { Account } from '../types';
 import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
@@ -22,11 +27,23 @@ interface AccountCardProps {
 export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, onDelete }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await onRefresh(account.id);
     setTimeout(() => setIsRefreshing(false), 800);
+  };
+
+  const handleCopyRaw = () => {
+    if (!account.rawResponse) return;
+    const text = typeof account.rawResponse === 'string'
+      ? account.rawResponse
+      : JSON.stringify(account.rawResponse, null, 2);
+    navigator.clipboard.writeText(text);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
   };
 
   // Provider branding
@@ -169,14 +186,23 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
                   key={idx}
                   className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 space-y-2.5 transition hover:border-zinc-300 dark:hover:border-zinc-700"
                 >
-                  {/* Row 1: Model Name & Percentage */}
+                  {/* Row 1: Model Name & Percentage / Raw Count */}
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 truncate">
                       {formatModelName(bucket.modelId)}
                     </span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
-                      {remainingPercent}%
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {bucket.remainingAmount != null && (
+                        <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/50 dark:border-zinc-700/50">
+                          {bucket.limitAmount != null
+                            ? `${bucket.remainingAmount.toLocaleString()} / ${bucket.limitAmount.toLocaleString()}`
+                            : `${bucket.remainingAmount.toLocaleString()} left`}
+                        </span>
+                      )}
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
+                        {remainingPercent}%
+                      </span>
+                    </div>
                   </div>
 
                   {/* Row 2: Progress bar */}
@@ -230,10 +256,112 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
             </>
           )}
         </span>
-        <span>
-          {account.lastPolledAt ? `Updated ${new Date(account.lastPolledAt).toLocaleTimeString()}` : 'Never polled'}
-        </span>
+
+        <div className="flex items-center gap-2">
+          <span>
+            {account.lastPolledAt ? `Updated ${new Date(account.lastPolledAt).toLocaleTimeString()}` : 'Never polled'}
+          </span>
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition border ${
+              showDetails
+                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-300 bg-zinc-100/80 dark:bg-zinc-800/60 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 border-zinc-200/60 dark:border-zinc-700/60'
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            <span>{showDetails ? 'Hide Details' : 'Details'}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Expandable Provider Details & Raw Response */}
+      {showDetails && (
+        <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 space-y-3.5 animate-fade-in text-xs">
+          {/* Key-Value Quick Specs */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800">
+            <div>
+              <span className="text-[10px] text-zinc-400 block uppercase font-mono">Provider ID</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200 font-semibold">{account.providerId}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-zinc-400 block uppercase font-mono">Account ID</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-200 truncate block" title={account.id}>{account.id}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-zinc-400 block uppercase font-mono">Tier / Plan</span>
+              <span className="text-zinc-800 dark:text-zinc-200 font-medium">{planBadge || account.tier || 'Standard'}</span>
+            </div>
+            {account.credentials?.companionProject && (
+              <div>
+                <span className="text-[10px] text-zinc-400 block uppercase font-mono">Companion Project</span>
+                <span className="font-mono text-zinc-800 dark:text-zinc-200 truncate block">{account.credentials.companionProject}</span>
+              </div>
+            )}
+            {account.credentials?.accountType && (
+              <div>
+                <span className="text-[10px] text-zinc-400 block uppercase font-mono">Account Type</span>
+                <span className="text-zinc-800 dark:text-zinc-200 capitalize">{account.credentials.accountType}</span>
+              </div>
+            )}
+            {account.credentials?.org && (
+              <div>
+                <span className="text-[10px] text-zinc-400 block uppercase font-mono">Organization</span>
+                <span className="text-zinc-800 dark:text-zinc-200">{account.credentials.org}</span>
+              </div>
+            )}
+            <div>
+              <span className="text-[10px] text-zinc-400 block uppercase font-mono">Last Polled</span>
+              <span className="text-zinc-800 dark:text-zinc-200">
+                {account.lastPolledAt ? new Date(account.lastPolledAt).toLocaleString() : 'Never'}
+              </span>
+            </div>
+          </div>
+
+          {/* Raw Provider Response Block */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Provider Response Payload</span>
+              </span>
+              {account.rawResponse && (
+                <button
+                  onClick={handleCopyRaw}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                >
+                  {copiedJson ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-500" />
+                      <span className="text-emerald-500">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Copy JSON</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {account.rawResponse ? (
+              <div className="relative rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 text-zinc-200">
+                <pre className="p-3.5 max-h-64 overflow-auto font-mono text-[11px] leading-relaxed select-text">
+                  {typeof account.rawResponse === 'string'
+                    ? account.rawResponse
+                    : JSON.stringify(account.rawResponse, null, 2)}
+                </pre>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-200/60 dark:border-zinc-800 text-center text-zinc-400 text-xs">
+                No raw provider response stored yet. Click the refresh button above to query this provider now.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

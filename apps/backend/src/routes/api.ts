@@ -49,6 +49,8 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
           modelId: b.model_id,
           tokenType: b.token_type,
           remainingFraction: b.remaining_fraction,
+          remainingAmount: b.remaining_amount,
+          limitAmount: b.limit_amount,
           resetTime: b.reset_time,
           usedPercent: Math.round((1 - b.remaining_fraction) * 100)
         }))
@@ -119,30 +121,61 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
       if (creds.token) sanitizedCreds.token = creds.token.substring(0, 6) + '...' + creds.token.slice(-4);
       if (creds.expiresAt) sanitizedCreds.expiresAt = creds.expiresAt;
 
-      return {
-        id: acc.id,
-        userId: acc.user_id,
-        providerId: acc.provider_id,
-        label: acc.label,
-        email: acc.email,
-        status: acc.status,
-        lastError: acc.last_error,
-        lastPolledAt: acc.last_polled_at,
-        tier: creds.tier || 'STANDARD',
-        plan: creds.plan,
-        credentials: sanitizedCreds,
-        createdAt: acc.created_at,
-        updatedAt: acc.updated_at,
-        buckets: latestBuckets.map(b => ({
-          modelId: b.model_id,
-          tokenType: b.token_type,
-          remainingFraction: b.remaining_fraction,
-          resetTime: b.reset_time,
-          usedPercent: Math.round((1 - b.remaining_fraction) * 100),
-          recordedAt: b.recorded_at
-        }))
-      };
-    });
+        // Extract and scrub latest rawResponse
+        let rawResponse: any = null;
+        for (const b of latestBuckets) {
+          if (b.raw_json) {
+            try {
+              rawResponse = JSON.parse(b.raw_json);
+              const scrub = (obj: any): any => {
+                if (!obj || typeof obj !== 'object') return obj;
+                if (Array.isArray(obj)) return obj.map(scrub);
+                const clean: Record<string, any> = {};
+                for (const [k, v] of Object.entries(obj)) {
+                  if (/token|secret|password|key/i.test(k) && typeof v === 'string') {
+                    clean[k] = v.length > 10 ? `${v.slice(0, 4)}...${v.slice(-4)}` : '******';
+                  } else {
+                    clean[k] = scrub(v);
+                  }
+                }
+                return clean;
+              };
+              rawResponse = scrub(rawResponse);
+              break;
+            } catch {
+              rawResponse = b.raw_json;
+              break;
+            }
+          }
+        }
+
+        return {
+          id: acc.id,
+          userId: acc.user_id,
+          providerId: acc.provider_id,
+          label: acc.label,
+          email: acc.email,
+          status: acc.status,
+          lastError: acc.last_error,
+          lastPolledAt: acc.last_polled_at,
+          tier: creds.tier || 'STANDARD',
+          plan: creds.plan,
+          credentials: sanitizedCreds,
+          rawResponse,
+          createdAt: acc.created_at,
+          updatedAt: acc.updated_at,
+          buckets: latestBuckets.map(b => ({
+            modelId: b.model_id,
+            tokenType: b.token_type,
+            remainingFraction: b.remaining_fraction,
+            remainingAmount: b.remaining_amount,
+            limitAmount: b.limit_amount,
+            resetTime: b.reset_time,
+            usedPercent: Math.round((1 - b.remaining_fraction) * 100),
+            recordedAt: b.recorded_at
+          }))
+        };
+      });
 
     return { accounts: result };
   });

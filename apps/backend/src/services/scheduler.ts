@@ -46,6 +46,8 @@ class QuotaScheduler {
           model_id: bucket.modelId,
           token_type: bucket.tokenType,
           remaining_fraction: bucket.remainingFraction,
+          remaining_amount: bucket.remainingAmount,
+          limit_amount: bucket.limitAmount,
           reset_time: bucket.resetTime,
           raw_json: snapshot.rawJson
         });
@@ -56,6 +58,31 @@ class QuotaScheduler {
       const status = isExhausted ? 'rate_limited' : 'active';
       accountRepo.updateStatus(account.id, status, null);
 
+      // Parse & scrub raw response for client delivery
+      let parsedRaw: any = null;
+      if (snapshot.rawJson) {
+        try {
+          parsedRaw = JSON.parse(snapshot.rawJson);
+          // Scrub sensitive credentials or tokens
+          const scrub = (obj: any): any => {
+            if (!obj || typeof obj !== 'object') return obj;
+            if (Array.isArray(obj)) return obj.map(scrub);
+            const clean: Record<string, any> = {};
+            for (const [k, v] of Object.entries(obj)) {
+              if (/token|secret|password|key/i.test(k) && typeof v === 'string') {
+                clean[k] = v.length > 10 ? `${v.slice(0, 4)}...${v.slice(-4)}` : '******';
+              } else {
+                clean[k] = scrub(v);
+              }
+            }
+            return clean;
+          };
+          parsedRaw = scrub(parsedRaw);
+        } catch {
+          parsedRaw = snapshot.rawJson;
+        }
+      }
+
       // Broadcast update to WebSocket clients
       wsHub.broadcast('QUOTA_UPDATED', {
         accountId: account.id,
@@ -63,6 +90,7 @@ class QuotaScheduler {
         tier: snapshot.tier,
         status,
         buckets: snapshot.buckets,
+        rawResponse: parsedRaw,
         lastPolledAt: new Date().toISOString()
       });
 

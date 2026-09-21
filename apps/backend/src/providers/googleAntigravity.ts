@@ -214,10 +214,23 @@ export class GoogleAntigravityProvider implements IProvider {
           const rawBuckets = quotaData.buckets || [];
           buckets = rawBuckets.map((b: any) => {
             const remainingFraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
+            const remainingAmount = typeof b.remainingAmount === 'number' ? b.remainingAmount 
+              : typeof b.remainingCount === 'number' ? b.remainingCount
+              : typeof b.remainingUnits === 'number' ? b.remainingUnits
+              : typeof b.availableAmount === 'number' ? b.availableAmount
+              : null;
+            const limitAmount = typeof b.limitAmount === 'number' ? b.limitAmount
+              : typeof b.quotaLimit === 'number' ? b.quotaLimit
+              : typeof b.totalLimit === 'number' ? b.totalLimit
+              : typeof b.maxUnits === 'number' ? b.maxUnits
+              : null;
+
             return {
               modelId: b.modelId || 'general',
               tokenType: b.tokenType || 'REQUESTS',
               remainingFraction: Math.max(0, Math.min(1, remainingFraction)),
+              remainingAmount,
+              limitAmount,
               resetTime: b.resetTime || null,
               usedPercent: Math.round((1 - remainingFraction) * 100)
             };
@@ -241,13 +254,23 @@ export class GoogleAntigravityProvider implements IProvider {
     if (buckets.length === 0) {
       // Check if paidTier has available credits directly in loadCodeAssist
       if (paidTier?.availableCredits && Array.isArray(paidTier.availableCredits) && paidTier.availableCredits.length > 0) {
-        buckets = paidTier.availableCredits.map((c: any) => ({
-          modelId: c.creditType || 'gemini-pro',
-          tokenType: 'CREDITS',
-          remainingFraction: typeof c.remainingFraction === 'number' ? c.remainingFraction : 1.0,
-          resetTime: c.resetTime || null,
-          usedPercent: typeof c.remainingFraction === 'number' ? Math.round((1 - c.remainingFraction) * 100) : 0
-        }));
+        buckets = paidTier.availableCredits.map((c: any) => {
+          const remainingAmount = typeof c.availableCredits === 'number' ? c.availableCredits 
+            : typeof c.availableAmount === 'number' ? c.availableAmount 
+            : null;
+          const limitAmount = typeof c.totalCredits === 'number' ? c.totalCredits 
+            : typeof c.limitAmount === 'number' ? c.limitAmount 
+            : null;
+          return {
+            modelId: c.creditType || 'gemini-pro',
+            tokenType: 'CREDITS',
+            remainingFraction: typeof c.remainingFraction === 'number' ? c.remainingFraction : 1.0,
+            remainingAmount,
+            limitAmount,
+            resetTime: c.resetTime || null,
+            usedPercent: typeof c.remainingFraction === 'number' ? Math.round((1 - c.remainingFraction) * 100) : 0
+          };
+        });
       } else {
         // Next midnight UTC for daily quota resets
         const nextMidnight = new Date();
@@ -256,23 +279,23 @@ export class GoogleAntigravityProvider implements IProvider {
 
         if (tier === 'ULTRA') {
           buckets = [
-            { modelId: 'gemini-ultra', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'gemini-2.5-pro', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'claude-3-5-sonnet', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 }
+            { modelId: 'gemini-ultra', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1500, limitAmount: 1500, resetTime, usedPercent: 0 },
+            { modelId: 'gemini-2.5-pro', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1500, limitAmount: 1500, resetTime, usedPercent: 0 },
+            { modelId: 'claude-3-5-sonnet', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1500, limitAmount: 1500, resetTime, usedPercent: 0 },
+            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1500, limitAmount: 1500, resetTime, usedPercent: 0 }
           ];
         } else if (tier === 'PRO') {
           buckets = [
-            { modelId: 'gemini-2.5-pro', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'gemini-3.8-flash', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'claude-3-5-sonnet', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 }
+            { modelId: 'gemini-2.5-pro', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1000, limitAmount: 1000, resetTime, usedPercent: 0 },
+            { modelId: 'gemini-3.8-flash', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1000, limitAmount: 1000, resetTime, usedPercent: 0 },
+            { modelId: 'claude-3-5-sonnet', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1000, limitAmount: 1000, resetTime, usedPercent: 0 },
+            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 1000, limitAmount: 1000, resetTime, usedPercent: 0 }
           ];
         } else {
           // FREE Tier
           buckets = [
-            { modelId: 'gemini-3.5-flash', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 },
-            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, resetTime, usedPercent: 0 }
+            { modelId: 'gemini-3.5-flash', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 100, limitAmount: 100, resetTime, usedPercent: 0 },
+            { modelId: 'daily-requests', tokenType: 'REQUESTS', remainingFraction: 1.0, remainingAmount: 100, limitAmount: 100, resetTime, usedPercent: 0 }
           ];
         }
       }

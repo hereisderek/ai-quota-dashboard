@@ -2,8 +2,10 @@ import { AccountRow } from '../db/index.js';
 
 export interface BucketInfo {
   modelId: string;
-  tokenType: string; // 'REQUESTS' | 'TOKENS' | 'INPUT_TOKENS' | 'OUTPUT_TOKENS' | 'CREDITS'
+  tokenType: string; // 'REQUESTS' | 'TOKENS' | 'INPUT_TOKENS' | 'OUTPUT_TOKENS' | 'CREDITS' | 'SEATS'
   remainingFraction: number; // 0.0 to 1.0 (e.g. 0.85 = 85% remaining)
+  remainingAmount?: number | null; // Raw remaining tokens / requests count if supported
+  limitAmount?: number | null; // Raw total limit if supported
   resetTime: string | null; // ISO-8601 UTC timestamp
   usedPercent?: number; // Calculated convenience: (1 - remainingFraction) * 100
 }

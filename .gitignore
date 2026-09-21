@@ -9,3 +9,7 @@ build/
 # Persistent data directory
 data/*
 !data/.gitkeep
+
+# Playwright artifacts
+.playwright-cli/
+*.png

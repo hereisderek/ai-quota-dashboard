@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Account, SystemStatus, AppSettings } from '../types';
+import { Account, SystemStatus, AppSettings, User } from '../types';
 
 export function useQuotaStream() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
@@ -29,19 +30,31 @@ export function useQuotaStream() {
     }
   }, []);
 
-  // Fetch status & settings
+  // Fetch status, user profile & settings
   const fetchMetadata = useCallback(async () => {
     try {
-      const [statusRes, settingsRes] = await Promise.all([
+      const [statusRes, settingsRes, meRes] = await Promise.all([
         fetch('/api/status'),
-        fetch('/api/settings')
+        fetch('/api/settings'),
+        fetch('/api/auth/me')
       ]);
 
       if (statusRes.ok) {
-        setStatus(await statusRes.json());
+        const s = await statusRes.json();
+        setStatus(s);
       }
       if (settingsRes.ok) {
         setSettings(await settingsRes.json());
+      }
+      if (meRes.ok) {
+        const me = await meRes.json();
+        setCurrentUser(prev => {
+          if (!prev && !me.user) return null;
+          if (prev && me.user && prev.id === me.user.id && prev.shareEnabled === me.user.shareEnabled && prev.shareSlug === me.user.shareSlug && prev.shareTitle === me.user.shareTitle) {
+            return prev;
+          }
+          return me.user;
+        });
       }
     } catch (err) {
       console.warn('[Stream] Metadata fetch error:', err);
@@ -105,7 +118,6 @@ export function useQuotaStream() {
         ws.onclose = () => {
           if (!isMounted) return;
           setWsConnected(false);
-          // Reconnect after 3 seconds
           reconnectTimeout = setTimeout(connectWs, 3000);
         };
 
@@ -120,7 +132,6 @@ export function useQuotaStream() {
 
     connectWs();
 
-    // Fallback polling every 30s to keep sync
     pollTimerRef.current = setInterval(() => {
       fetchAccounts();
     }, 30000);
@@ -170,10 +181,23 @@ export function useQuotaStream() {
     }
   };
 
+  // Logout
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setCurrentUser(null);
+      await fetchAccounts();
+      await fetchMetadata();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   return {
     accounts,
     status,
     settings,
+    currentUser,
     isLoading,
     isRefreshing,
     wsConnected,
@@ -181,6 +205,7 @@ export function useQuotaStream() {
     refreshAll,
     refreshAccount,
     deleteAccount,
+    logout,
     reload: fetchAccounts,
     reloadMetadata: fetchMetadata
   };

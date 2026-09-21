@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
-import { accountRepo, AccountRow } from '../db/index.js';
+import { accountRepo, assignOrphanedAccounts, AccountRow } from '../db/index.js';
 
 export interface StoredAccount {
   id: string;
+  userId?: string;
   providerId: string;
   label: string;
   email?: string;
@@ -59,6 +60,7 @@ export class AccountsStorageService {
       for (const acc of parsed.accounts) {
         accountRepo.upsert({
           id: acc.id,
+          user_id: acc.userId,
           provider_id: acc.providerId,
           label: acc.label,
           email: acc.email,
@@ -66,6 +68,8 @@ export class AccountsStorageService {
           status: acc.status || 'active'
         });
       }
+      assignOrphanedAccounts();
+      this.syncDbToDisk();
       console.log(`[AccountsStorage] Synced ${parsed.accounts.length} account(s) from disk to DB`);
     } catch (err) {
       console.error('[AccountsStorage] Error reading accounts file:', err);
@@ -81,6 +85,7 @@ export class AccountsStorageService {
       const rows = accountRepo.getAll();
       const accounts: StoredAccount[] = rows.map(r => ({
         id: r.id,
+        userId: r.user_id || undefined,
         providerId: r.provider_id,
         label: r.label,
         email: r.email || undefined,
@@ -116,7 +121,7 @@ export class AccountsStorageService {
       let debounceTimer: NodeJS.Timeout | null = null;
 
       watcher = fs.watch(config.accountsFilePath, (eventType) => {
-        if (isWriting) return; // Skip our own programmatic writes
+        if (isWriting) return;
 
         if (eventType === 'change') {
           if (debounceTimer) clearTimeout(debounceTimer);
@@ -127,7 +132,6 @@ export class AccountsStorageService {
         }
       });
 
-      // Crucial: unref watcher so it doesn't prevent Node process from exiting
       if (watcher.unref) {
         watcher.unref();
       }

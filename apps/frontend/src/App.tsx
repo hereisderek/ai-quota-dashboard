@@ -5,9 +5,19 @@ import { OverviewStats } from './components/OverviewStats';
 import { AccountCard } from './components/AccountCard';
 import { AddAccountModal } from './components/AddAccountModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ShareModal } from './components/ShareModal';
+import { AuthModal } from './components/AuthModal';
+import { ShareView } from './pages/ShareView';
 import { Plus, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
 export function App() {
+  // Check if current URL is a public share route (e.g. /share/derek)
+  const pathname = window.location.pathname;
+  if (pathname.startsWith('/share/')) {
+    const slug = pathname.replace(/^\/share\/?/, '').split('/')[0];
+    return <ShareView slug={slug} />;
+  }
+
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark' ||
       (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -16,19 +26,25 @@ export function App() {
   const [selectedProviderFilter, setSelectedProviderFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSetupMode, setIsSetupMode] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const {
     accounts,
     status,
     settings,
+    currentUser,
     isLoading,
     isRefreshing,
     wsConnected,
     refreshAll,
     refreshAccount,
     deleteAccount,
-    reload
+    logout,
+    reload,
+    reloadMetadata
   } = useQuotaStream();
 
   // Dark mode effect
@@ -42,6 +58,19 @@ export function App() {
     }
   }, [darkMode]);
 
+  // Check setup status on first launch
+  useEffect(() => {
+    fetch('/api/auth/setup-status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.setupRequired) {
+          setIsSetupMode(true);
+          setIsAuthModalOpen(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Handle URL query parameters from OAuth callbacks
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -52,6 +81,7 @@ export function App() {
         message: `Successfully connected ${acc}! Initial quota synchronization triggered.`
       });
       reload();
+      reloadMetadata();
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (params.get('auth_error')) {
       setBannerNotice({
@@ -60,7 +90,7 @@ export function App() {
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [reload]);
+  }, [reload, reloadMetadata]);
 
   // Filtered accounts
   const filteredAccounts = accounts.filter(acc => {
@@ -72,6 +102,7 @@ export function App() {
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
       <Header
         status={status}
+        currentUser={currentUser}
         wsConnected={wsConnected}
         isRefreshing={isRefreshing}
         darkMode={darkMode}
@@ -79,6 +110,9 @@ export function App() {
         onRefreshAll={refreshAll}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
+        onOpenAuthModal={() => { setIsSetupMode(false); setIsAuthModalOpen(true); }}
+        onLogout={logout}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -194,6 +228,23 @@ export function App() {
         settings={settings}
         status={status}
         onSave={reload}
+      />
+
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        currentUser={currentUser}
+        onUpdateSuccess={reloadMetadata}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        isSetup={isSetupMode}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={() => {
+          reload();
+          reloadMetadata();
+        }}
       />
 
       {/* Footer */}

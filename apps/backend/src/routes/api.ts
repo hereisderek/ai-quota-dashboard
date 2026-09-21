@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
-import { accountRepo, snapshotRepo, settingsRepo } from '../db/index.js';
+import { accountRepo, snapshotRepo, settingsRepo, userRepo } from '../db/index.js';
 import { providerRegistry } from '../providers/index.js';
 import { AccountsStorageService } from '../services/accountsStorage.js';
 import { quotaScheduler } from '../services/scheduler.js';
@@ -8,17 +8,83 @@ import { wsHub } from '../services/websocket.js';
 import { config } from '../config.js';
 
 export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
+  // Public Read-Only Share Endpoint
+  fastify.get('/api/share/:slug', async (req, reply) => {
+    const { slug } = req.params as { slug: string };
+    const user = userRepo.getByShareSlug(slug);
+
+    if (!user || user.share_enabled !== 1) {
+      return reply.status(404).send({
+        error: 'Share page not found or private',
+        message: 'This quota share page is either disabled or does not exist.'
+      });
+    }
+
+    const accounts = accountRepo.getAll(user.id);
+    const sanitizedAccounts = accounts.map(acc => {
+      const latestBuckets = snapshotRepo.getLatestForAccount(acc.id);
+
+      // Extract plan/tier safely
+      let tier = 'STANDARD';
+      try {
+        const creds = JSON.parse(acc.credentials);
+        if (creds.tier) tier = creds.tier;
+        if (creds.plan) tier = creds.plan;
+      } catch {}
+
+      // Mask any email address in the label to prevent public PII exposure
+      const sanitizedLabel = acc.label.replace(
+        /([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g,
+        (_, user, domain) => `${user.slice(0, 2)}***@${domain}`
+      );
+
+      return {
+        id: acc.id,
+        label: sanitizedLabel,
+        providerId: acc.provider_id,
+        tier,
+        status: acc.status,
+        lastPolledAt: acc.last_polled_at,
+        buckets: latestBuckets.map(b => ({
+          modelId: b.model_id,
+          tokenType: b.token_type,
+          remainingFraction: b.remaining_fraction,
+          resetTime: b.reset_time,
+          usedPercent: Math.round((1 - b.remaining_fraction) * 100)
+        }))
+      };
+    });
+
+    return {
+      title: user.share_title || `${user.display_name || user.username}'s AI Quota`,
+      user: {
+        displayName: user.display_name || user.username
+      },
+      accounts: sanitizedAccounts,
+      generatedAt: new Date().toISOString()
+    };
+  });
+
   // System Status
-  fastify.get('/api/status', async () => {
-    const accounts = accountRepo.getAll();
+  fastify.get('/api/status', async (req) => {
+    const userId = req.user?.id;
+    const accounts = userId ? accountRepo.getAll(userId) : accountRepo.getAll();
     return {
       status: 'ok',
-      version: '1.0.0',
+      version: '1.1.0',
       uptimeSeconds: Math.round(process.uptime()),
       dataDir: config.dataDir,
       authMode: config.authMode,
       totalAccounts: accounts.length,
       activeClients: wsHub.getClientCount(),
+      currentUser: req.user ? {
+        id: req.user.id,
+        username: req.user.username,
+        displayName: req.user.display_name,
+        role: req.user.role,
+        shareEnabled: req.user.share_enabled === 1,
+        shareSlug: req.user.share_slug
+      } : null,
       providers: providerRegistry.getMetadataList()
     };
   });
@@ -30,9 +96,11 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     };
   });
 
-  // Accounts with latest Quota Buckets
-  fastify.get('/api/accounts', async () => {
-    const accounts = accountRepo.getAll();
+  // Accounts with latest Quota Buckets (scoped to authenticated user)
+  fastify.get('/api/accounts', async (req, reply) => {
+    const userId = req.user?.id;
+    const accounts = userId ? accountRepo.getAll(userId) : accountRepo.getAll();
+
     const result = accounts.map(acc => {
       const latestBuckets = snapshotRepo.getLatestForAccount(acc.id);
       let creds: any = {};
@@ -40,13 +108,11 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
         creds = JSON.parse(acc.credentials);
       } catch {}
 
-      // Sanitize credentials so secret keys aren't exposed in full
       const sanitizedCreds: Record<string, any> = {};
       if (creds.email) sanitizedCreds.email = creds.email;
       if (creds.org) sanitizedCreds.org = creds.org;
       if (creds.enterprise) sanitizedCreds.enterprise = creds.enterprise;
       if (creds.url) sanitizedCreds.url = creds.url;
-      if (creds.accountType) sanitizedCreds.accountType = creds.accountType;
       if (creds.tier) sanitizedCreds.tier = creds.tier;
       if (creds.plan) sanitizedCreds.plan = creds.plan;
       if (creds.apiKey) sanitizedCreds.apiKey = creds.apiKey.substring(0, 7) + '...' + creds.apiKey.slice(-4);
@@ -55,14 +121,14 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
       return {
         id: acc.id,
+        userId: acc.user_id,
         providerId: acc.provider_id,
         label: acc.label,
         email: acc.email,
         status: acc.status,
         lastError: acc.last_error,
         lastPolledAt: acc.last_polled_at,
-        tier: creds.tier,
-        accountType: creds.accountType,
+        tier: creds.tier || 'STANDARD',
         plan: creds.plan,
         credentials: sanitizedCreds,
         createdAt: acc.created_at,
@@ -81,8 +147,9 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     return { accounts: result };
   });
 
-  // Add Account (API Key / Token / Custom)
+  // Add Account (scoped to authenticated user)
   fastify.post('/api/accounts', async (req, reply) => {
+    const userId = req.user?.id;
     const body = req.body as {
       providerId: string;
       label: string;
@@ -103,6 +170,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
     accountRepo.upsert({
       id: accountId,
+      user_id: userId || null,
       provider_id: body.providerId,
       label: body.label,
       email: body.email || null,
@@ -112,7 +180,6 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
     AccountsStorageService.syncDbToDisk();
 
-    // Trigger initial poll
     const acc = accountRepo.getById(accountId);
     if (acc) {
       quotaScheduler.pollAccount(acc).catch(err => {
@@ -123,9 +190,10 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     return { success: true, accountId };
   });
 
-  // Update Account
+  // Update Account (scoped)
   fastify.put('/api/accounts/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const userId = req.user?.id;
     const body = req.body as {
       label?: string;
       email?: string;
@@ -133,7 +201,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
       status?: 'active' | 'disabled';
     };
 
-    const existing = accountRepo.getById(id);
+    const existing = accountRepo.getById(id, userId);
     if (!existing) {
       return reply.status(404).send({ error: 'Account not found' });
     }
@@ -144,6 +212,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
     accountRepo.upsert({
       id,
+      user_id: existing.user_id,
       provider_id: existing.provider_id,
       label: body.label || existing.label,
       email: body.email ?? existing.email,
@@ -155,25 +224,26 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     return { success: true };
   });
 
-  // Delete Account
+  // Delete Account (scoped)
   fastify.delete('/api/accounts/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const existing = accountRepo.getById(id);
-    if (!existing) {
+    const userId = req.user?.id;
+
+    const deleted = accountRepo.delete(id, userId);
+    if (!deleted) {
       return reply.status(404).send({ error: 'Account not found' });
     }
 
-    accountRepo.delete(id);
     AccountsStorageService.syncDbToDisk();
-
     wsHub.broadcast('ACCOUNT_DELETED', { accountId: id });
     return { success: true };
   });
 
-  // Force Refresh Single Account
+  // Force Refresh Single Account (scoped)
   fastify.post('/api/accounts/:id/refresh', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const existing = accountRepo.getById(id);
+    const userId = req.user?.id;
+    const existing = accountRepo.getById(id, userId);
     if (!existing) {
       return reply.status(404).send({ error: 'Account not found' });
     }
@@ -182,20 +252,27 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     return { success: true, snapshot };
   });
 
-  // Force Refresh All Accounts
-  fastify.post('/api/accounts/refresh-all', async () => {
-    quotaScheduler.pollAll().catch(err => {
-      console.warn('[Refresh All] Polling error:', err);
-    });
+  // Force Refresh All Accounts (for current user)
+  fastify.post('/api/accounts/refresh-all', async (req) => {
+    const userId = req.user?.id;
+    const accounts = userId ? accountRepo.getAll(userId) : accountRepo.getAll();
+    for (const acc of accounts) {
+      quotaScheduler.pollAccount(acc).catch(() => {});
+    }
     return { success: true, message: 'Refresh cycle triggered' };
   });
 
-  // Historical Data for Charts
+  // Historical Data for Charts (scoped)
   fastify.get('/api/accounts/:id/history', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const userId = req.user?.id;
+    const existing = accountRepo.getById(id, userId);
+    if (!existing) {
+      return reply.status(404).send({ error: 'Account not found' });
+    }
+
     const query = req.query as { hours?: string };
     const hours = Math.min(720, Math.max(1, parseInt(query.hours || '24', 10)));
-
     const snapshots = snapshotRepo.getHistory(id, hours);
     return { history: snapshots };
   });
@@ -210,7 +287,12 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     };
   });
 
-  fastify.post('/api/settings', async (req) => {
+  fastify.post('/api/settings', async (req, reply) => {
+    // Only admins can change system-wide settings
+    if (req.user && req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Only administrators can modify system settings' });
+    }
+
     const body = req.body as Record<string, any>;
     if (body.pollIntervalSeconds) {
       const interval = Math.max(30, parseInt(body.pollIntervalSeconds, 10));

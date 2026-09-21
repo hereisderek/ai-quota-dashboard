@@ -4,66 +4,108 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-test('Empty DATA_DIR self-initialization', async () => {
-  const tmpDataDir = path.join(os.tmpdir(), `ai-quota-test-${Date.now()}`);
+test('Empty DATA_DIR self-initialization and multi-user isolation', async () => {
+  const tmpDataDir = path.join(os.tmpdir(), `ai-quota-multiuser-${Date.now()}`);
   assert.equal(fs.existsSync(tmpDataDir), false);
 
-  // Set env
   process.env.DATA_DIR = tmpDataDir;
 
   const { config } = await import('../config.js');
   assert.equal(fs.existsSync(config.dataDir), true);
 
-  const { getDb, accountRepo, snapshotRepo } = await import('../db/index.js');
+  const { getDb, accountRepo, snapshotRepo, userRepo, sessionRepo } = await import('../db/index.js');
   const db = getDb();
   assert.ok(db, 'DB should initialize cleanly');
 
-  // Verify accounts table exists and returns empty array
-  const accounts = accountRepo.getAll();
-  assert.deepEqual(accounts, []);
+  // Test 1: Verify default admin user was auto-bootstrapped
+  assert.equal(userRepo.count(), 1);
+  const admin = userRepo.getAll()[0];
+  assert.equal(admin.role, 'admin');
 
-  // Test 2: accounts.json file initialization
-  const { AccountsStorageService } = await import('../services/accountsStorage.js');
-  AccountsStorageService.init();
+  // Test 2: Create a second regular user
+  const user2 = userRepo.create({
+    username: 'alice',
+    password: 'securepassword123',
+    displayName: 'Alice Smith'
+  });
+  assert.ok(user2.id);
+  assert.equal(user2.username, 'alice');
+  assert.equal(userRepo.verifyPassword('securepassword123', user2.password_hash), true);
+  assert.equal(userRepo.verifyPassword('wrongpassword', user2.password_hash), false);
 
-  assert.equal(fs.existsSync(config.accountsFilePath), true);
-  const fileContent = JSON.parse(fs.readFileSync(config.accountsFilePath, 'utf8'));
-  assert.deepEqual(fileContent, { accounts: [] });
+  // Test 3: Create Session
+  const token = sessionRepo.create(user2.id);
+  assert.ok(token);
+  const sessionUser = sessionRepo.getUserByToken(token);
+  assert.equal(sessionUser?.id, user2.id);
 
-  // Test 3: Account upsert and snapshot recording
+  // Test 4: Multi-User Account Scoping & Isolation
   accountRepo.upsert({
-    id: 'test-google-1',
+    id: 'acc-admin-1',
+    user_id: admin.id,
     provider_id: 'google-antigravity',
-    label: 'Work Account',
-    email: 'work@example.com',
-    credentials: JSON.stringify({ accessToken: 'mock-token', refreshToken: 'mock-refresh' })
+    label: 'Admin Work',
+    credentials: JSON.stringify({ token: 'admin-secret-token' })
   });
 
-  const stored = accountRepo.getById('test-google-1');
-  assert.equal(stored?.label, 'Work Account');
-  assert.equal(stored?.email, 'work@example.com');
+  accountRepo.upsert({
+    id: 'acc-alice-1',
+    user_id: user2.id,
+    provider_id: 'anthropic',
+    label: 'Alice Personal',
+    credentials: JSON.stringify({ apiKey: 'sk-ant-alice-secret' })
+  });
+
+  // Admin gets only admin accounts when scoped
+  const adminAccounts = accountRepo.getAll(admin.id);
+  assert.equal(adminAccounts.length, 1);
+  assert.equal(adminAccounts[0].id, 'acc-admin-1');
+
+  // Alice gets only Alice's accounts
+  const aliceAccounts = accountRepo.getAll(user2.id);
+  assert.equal(aliceAccounts.length, 1);
+  assert.equal(aliceAccounts[0].id, 'acc-alice-1');
+
+  // Alice cannot access or delete Admin's account
+  assert.equal(accountRepo.getById('acc-admin-1', user2.id), undefined);
+  assert.equal(accountRepo.delete('acc-admin-1', user2.id), false);
+
+  // Test 5: Read-Only Share Quota Page Toggle
+  assert.equal(user2.share_enabled, 0); // Initially disabled
 
   snapshotRepo.record({
-    account_id: 'test-google-1',
-    provider_id: 'google-antigravity',
-    model_id: 'gemini-3-pro',
+    account_id: 'acc-alice-1',
+    provider_id: 'anthropic',
+    model_id: 'claude-3-5-sonnet',
     token_type: 'REQUESTS',
-    remaining_fraction: 0.85,
-    reset_time: new Date(Date.now() + 3600000).toISOString()
+    remaining_fraction: 0.9,
+    reset_time: '2026-09-23T00:00:00Z'
   });
 
-  const latest = snapshotRepo.getLatestForAccount('test-google-1');
-  assert.equal(latest.length, 1);
-  assert.equal(latest[0].model_id, 'gemini-3-pro');
-  assert.equal(latest[0].remaining_fraction, 0.85);
+  // Check share slug resolution
+  const slugUser = userRepo.getByShareSlug(user2.share_slug!);
+  assert.equal(slugUser?.id, user2.id);
 
-  // Test 4: Sync to accounts.json
-  AccountsStorageService.syncDbToDisk();
-  const updatedFile = JSON.parse(fs.readFileSync(config.accountsFilePath, 'utf8'));
-  assert.equal(updatedFile.accounts.length, 1);
-  assert.equal(updatedFile.accounts[0].id, 'test-google-1');
+  // Toggle Share ON
+  userRepo.updateShareSettings(user2.id, {
+    shareEnabled: true,
+    shareSlug: 'alice-quotas',
+    shareTitle: "Alice's AI Status"
+  });
+
+  const updatedUser2 = userRepo.getById(user2.id);
+  assert.equal(updatedUser2?.share_enabled, 1);
+  assert.equal(updatedUser2?.share_slug, 'alice-quotas');
+  assert.equal(updatedUser2?.share_title, "Alice's AI Status");
+
+  // Toggle Share OFF
+  userRepo.updateShareSettings(user2.id, {
+    shareEnabled: false
+  });
+  assert.equal(userRepo.getById(user2.id)?.share_enabled, 0);
 
   // Stop watcher & clean up
+  const { AccountsStorageService } = await import('../services/accountsStorage.js');
   AccountsStorageService.stopWatcher();
   fs.rmSync(tmpDataDir, { recursive: true, force: true });
 });

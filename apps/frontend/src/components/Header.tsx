@@ -1,18 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
-  Activity, 
   RotateCw, 
   Plus, 
   Settings, 
   Sun, 
   Moon, 
   ShieldCheck,
-  Zap
+  Zap,
+  Share2,
+  User as UserIcon,
+  LogOut,
+  ChevronDown
 } from 'lucide-react';
-import { SystemStatus } from '../types';
+import { SystemStatus, User } from '../types';
 
 interface HeaderProps {
   status: SystemStatus | null;
+  currentUser: User | null;
   wsConnected: boolean;
   isRefreshing: boolean;
   darkMode: boolean;
@@ -20,10 +24,14 @@ interface HeaderProps {
   onRefreshAll: () => void;
   onOpenAddModal: () => void;
   onOpenSettings: () => void;
+  onOpenShareModal: () => void;
+  onOpenAuthModal: () => void;
+  onLogout: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   status,
+  currentUser,
   wsConnected,
   isRefreshing,
   darkMode,
@@ -31,7 +39,12 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshAll,
   onOpenAddModal,
   onOpenSettings,
+  onOpenShareModal,
+  onOpenAuthModal,
+  onLogout
 }) => {
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
@@ -46,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
                 AI Quota Dashboard
               </h1>
               <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                v1.0
+                v1.1
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
@@ -65,6 +78,23 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Share Quota Page Button */}
+          <button
+            onClick={onOpenShareModal}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+              currentUser?.shareEnabled
+                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-800'
+            }`}
+            title="Public Read-Only Share Link"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Share Page</span>
+            {currentUser?.shareEnabled && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            )}
+          </button>
+
           {/* Refresh All Button */}
           <button
             onClick={onRefreshAll}
@@ -85,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Connect Account</span>
           </button>
 
-          <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
+          <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 hidden sm:block" />
 
           {/* Theme Toggle */}
           <button
@@ -104,6 +134,64 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Settings className="w-4 h-4" />
           </button>
+
+          {/* User Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-1.5 p-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition"
+              title="User Account"
+            >
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
+                {(currentUser?.displayName || currentUser?.username || 'U')[0].toUpperCase()}
+              </div>
+              <ChevronDown className="w-3 h-3 text-zinc-400" />
+            </button>
+
+            {userMenuOpen && (
+              <div
+                onClick={() => setUserMenuOpen(false)}
+                className="fixed inset-0 z-40"
+              />
+            )}
+
+            {userMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl py-1.5 z-50 animate-fade-in text-xs">
+                <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                    {currentUser?.displayName || currentUser?.username}
+                  </div>
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono">
+                    {currentUser?.role || 'user'}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => { setUserMenuOpen(false); onOpenShareModal(); }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Public Share Link</span>
+                </button>
+
+                <button
+                  onClick={() => { setUserMenuOpen(false); onOpenAuthModal(); }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                >
+                  <UserIcon className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Switch User / Login</span>
+                </button>
+
+                <button
+                  onClick={() => { setUserMenuOpen(false); onLogout(); }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-t border-zinc-100 dark:border-zinc-800 mt-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

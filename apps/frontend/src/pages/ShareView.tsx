@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ShareData } from '../types';
 import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
+import { ProviderIcon, getProviderBrand } from '../components/ProviderIcon';
 
 interface ShareViewProps {
   slug: string;
@@ -108,35 +109,6 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
     return cols;
   }, [accounts, numColumns]);
 
-  const getProviderBrand = (providerId: string) => {
-    switch (providerId) {
-      case 'google-antigravity':
-        return {
-          name: 'Google Antigravity',
-          icon: <Sparkles className="w-4 h-4 text-sky-500" />,
-          badgeClass: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20'
-        };
-      case 'anthropic':
-        return {
-          name: 'Anthropic Claude',
-          icon: <Bot className="w-4 h-4 text-amber-500" />,
-          badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
-        };
-      case 'github-copilot':
-        return {
-          name: 'GitHub Copilot',
-          icon: <Github className="w-4 h-4 text-purple-500" />,
-          badgeClass: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20'
-        };
-      default:
-        return {
-          name: 'Custom API',
-          icon: <Globe className="w-4 h-4 text-emerald-500" />,
-          badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
-        };
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
       {/* Top Navbar */}
@@ -229,8 +201,8 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
                         {/* Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
-                              {brand.icon}
+                            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm text-zinc-700 dark:text-zinc-200">
+                              <ProviderIcon name={brand.iconName} className="w-4 h-4" />
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">

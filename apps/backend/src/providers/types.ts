@@ -24,11 +24,40 @@ export interface TokenRefreshResult {
   expiresAt?: number;
 }
 
+export interface FormFieldDefinition {
+  key: string;
+  label: string;
+  type: 'text' | 'password' | 'select' | 'number' | 'textarea' | 'checkbox';
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: any;
+  description?: string;
+  options?: Array<{ label: string; value: string }>;
+}
+
+export interface ProviderAuthDoc {
+  title: string;
+  description: string;
+  linkText?: string;
+  linkUrl?: string;
+  steps?: string[];
+}
+
+export interface ProviderBrand {
+  name: string;
+  icon: string; // Icon identifier (e.g. 'Sparkles', 'Bot', 'Github', 'Layers', 'Cpu', 'Zap', 'Globe', 'CircleDot')
+  color: string; // Accent color name (e.g. 'sky', 'amber', 'purple', 'emerald', 'violet', 'cyan', 'rose')
+  badgeClass?: string;
+}
+
 export interface IProvider {
   id: string;
   name: string;
   description: string;
-  authType: 'oauth' | 'api_key' | 'custom';
+  brand: ProviderBrand;
+  authType: 'oauth' | 'api_key' | 'credentials' | 'custom';
+  authDoc?: ProviderAuthDoc;
+  fields: FormFieldDefinition[];
   
   // Core quota extraction method
   fetchQuota(account: AccountRow): Promise<QuotaSnapshot>;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Account } from '../types';
 import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
+import { ProviderIcon, getProviderBrand } from './ProviderIcon';
 
 interface AccountCardProps {
   account: Account;
@@ -46,39 +47,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
     setTimeout(() => setCopiedJson(false), 2000);
   };
 
-  // Provider branding
-  const getProviderBrand = (providerId: string) => {
-    switch (providerId) {
-      case 'google-antigravity':
-        return {
-          name: 'Google Antigravity',
-          icon: <Sparkles className="w-5 h-5 text-sky-500" />,
-          badgeClass: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20'
-        };
-      case 'anthropic':
-        return {
-          name: 'Anthropic Claude',
-          icon: <Bot className="w-5 h-5 text-amber-500" />,
-          badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
-        };
-      case 'github-copilot':
-        return {
-          name: 'GitHub Copilot',
-          icon: <Github className="w-5 h-5 text-purple-500" />,
-          badgeClass: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20'
-        };
-      default:
-        return {
-          name: 'Custom REST API',
-          icon: <Globe className="w-5 h-5 text-emerald-500" />,
-          badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
-        };
-    }
-  };
-
   const brand = getProviderBrand(account.providerId);
-
-  // Clean title: avoid duplicating email if label is "Google (email)"
   let displayTitle = account.label;
   if (account.email && (account.label === `Google (${account.email})` || account.label.includes(account.email))) {
     displayTitle = brand.name;
@@ -124,8 +93,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
         {/* Top Bar: Provider, Title, Email & Actions */}
         <div className="flex items-start justify-between gap-3 pb-4 border-b border-zinc-100 dark:border-zinc-800/80">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
-              {brand.icon}
+            <div className="w-11 h-11 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 flex items-center justify-center shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm text-zinc-700 dark:text-zinc-200">
+              <ProviderIcon name={brand.iconName} className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">

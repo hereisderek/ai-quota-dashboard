@@ -18,6 +18,54 @@ export class GenericRestProvider implements IProvider {
   description = 'Configurable REST API quota provider';
   authType: 'custom' = 'custom';
 
+  brand = {
+    name: 'Custom REST API',
+    icon: 'Globe',
+    color: 'emerald',
+    badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+  };
+
+  authDoc = {
+    title: 'Custom REST API Endpoint',
+    description: 'Poll any custom or self-hosted API endpoint that returns JSON quota or balance metrics.'
+  };
+
+  fields = [
+    {
+      key: 'url',
+      label: 'API Endpoint URL',
+      type: 'text' as const,
+      placeholder: 'https://api.my-service.com/v1/quota',
+      required: true
+    },
+    {
+      key: 'method',
+      label: 'HTTP Method',
+      type: 'select' as const,
+      defaultValue: 'GET',
+      options: [
+        { label: 'GET', value: 'GET' },
+        { label: 'POST', value: 'POST' }
+      ]
+    },
+    {
+      key: 'token',
+      label: 'Bearer Token or API Key',
+      type: 'password' as const,
+      placeholder: 'Secret token or key (Optional)',
+      required: false
+    },
+    {
+      key: 'remainingPath',
+      label: 'Remaining Fraction JSON Path',
+      type: 'text' as const,
+      placeholder: 'e.g. remaining_fraction or quota.fraction',
+      defaultValue: 'remaining_fraction',
+      required: false,
+      description: 'Dot-notation path to the 0.0 - 1.0 fraction or remaining value in the JSON response.'
+    }
+  ];
+
   async fetchQuota(account: AccountRow): Promise<QuotaSnapshot> {
     const creds = JSON.parse(account.credentials);
     const url = creds.url;

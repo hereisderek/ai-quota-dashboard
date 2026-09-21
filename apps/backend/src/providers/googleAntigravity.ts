@@ -9,6 +9,38 @@ export class GoogleAntigravityProvider implements IProvider {
   description = 'Google Cloud Code Assist & Gemini/Claude Quotas for Antigravity';
   authType: 'oauth' = 'oauth';
 
+  brand = {
+    name: 'Google Antigravity',
+    icon: 'Sparkles',
+    color: 'sky',
+    badgeClass: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20'
+  };
+
+  authDoc = {
+    title: 'Google OAuth & Antigravity IDE',
+    description: 'Sign in with your Google account that has a Google AI Pro/Ultra plan or Gemini Code Assist enabled.',
+    linkText: 'Google AI Subscription',
+    linkUrl: 'https://one.google.com/ai'
+  };
+
+  fields = [
+    {
+      key: 'refreshToken',
+      label: 'Refresh Token (Manual headless fallback)',
+      type: 'password' as const,
+      placeholder: '1//0g... (Leave blank if connecting via OAuth button above)',
+      required: false,
+      description: 'Only required if adding credentials manually on a remote server without web browser.'
+    },
+    {
+      key: 'email',
+      label: 'Account Email',
+      type: 'text' as const,
+      placeholder: 'user@gmail.com',
+      required: false
+    }
+  ];
+
   private static OAUTH_SCOPES = [
     'https://www.googleapis.com/auth/cloud-platform',
     'https://www.googleapis.com/auth/userinfo.email',

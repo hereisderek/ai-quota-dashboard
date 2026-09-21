@@ -79,7 +79,25 @@ export function formatModelName(modelId: string): string {
     '3p-5h': 'Claude & GPT (5-Hour)',
     'daily-requests': 'Daily Request Allowance',
     'copilot-seats': 'Copilot Active Seats',
-    'github-api-quota': 'GitHub API Rate Limits'
+    'github-api-quota': 'GitHub API Rate Limits',
+    
+    // OpenRouter
+    'openrouter-key-credit': 'Key Credit Limit',
+    'openrouter-account-balance': 'Account Credits (USD)',
+    'openrouter-rate-limit': 'Rate Limit Allowance',
+    'openrouter-api-active': 'OpenRouter Status',
+
+    // DeepSeek
+    'deepseek-balance-usd': 'DeepSeek Balance (USD)',
+    'deepseek-balance-cny': 'DeepSeek Balance (CNY)',
+    'deepseek-topped-up': 'Topped-Up Funds',
+    'deepseek-granted-credit': 'Granted Credits',
+    'deepseek-account': 'DeepSeek Status',
+
+    // OpenAI
+    'openai-requests-quota': 'OpenAI Requests Quota',
+    'openai-tokens-quota': 'OpenAI Tokens Quota',
+    'openai-api-active': 'OpenAI Models Access'
   };
 
   return map[modelId] || modelId.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());

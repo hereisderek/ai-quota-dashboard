@@ -11,6 +11,41 @@ export class AnthropicProvider implements IProvider {
   description = 'Claude API Rate Limits & Organization Quotas';
   authType: 'api_key' = 'api_key';
 
+  brand = {
+    name: 'Anthropic Claude',
+    icon: 'Bot',
+    color: 'amber',
+    badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
+  };
+
+  authDoc = {
+    title: 'Claude Subscription or API Key',
+    description: 'Monitor Claude Pro/Team 5-hour sessions and weekly token usage, or Anthropic Console rate limits.',
+    linkText: 'Anthropic Console',
+    linkUrl: 'https://console.anthropic.com/settings/keys'
+  };
+
+  fields = [
+    {
+      key: 'authMode',
+      label: 'Connection Mode',
+      type: 'select' as const,
+      defaultValue: 'subscription',
+      options: [
+        { label: 'Claude Pro/Team (Auto-detect via claude.json)', value: 'subscription' },
+        { label: 'Anthropic API Key (sk-ant-api03-...)', value: 'api_key' }
+      ]
+    },
+    {
+      key: 'apiKey',
+      label: 'Anthropic API Key',
+      type: 'password' as const,
+      placeholder: 'sk-ant-api03-...',
+      required: false,
+      description: 'Leave empty if using Claude Pro/Team subscription mode.'
+    }
+  ];
+
   private findClaudeSubscriptionConfig(): any | null {
     const candidatePaths = [
       path.join(config.dataDir || '/data', 'claude.json'),

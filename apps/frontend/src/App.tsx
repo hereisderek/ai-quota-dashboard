@@ -138,6 +138,29 @@ export function App() {
     return cols;
   }, [filteredAccounts, numColumns]);
 
+  // Dynamically compute available provider filter tabs
+  const availableProviderTabs = useMemo(() => {
+    const tabs: Array<{ id: string; label: string }> = [{ id: 'all', label: 'All Providers' }];
+    const seen = new Set<string>();
+
+    const metaList = status?.providers || [];
+    for (const p of metaList) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        tabs.push({ id: p.id, label: p.brand?.name || p.name });
+      }
+    }
+
+    for (const a of accounts) {
+      if (!seen.has(a.providerId)) {
+        seen.add(a.providerId);
+        tabs.push({ id: a.providerId, label: a.providerId });
+      }
+    }
+
+    return tabs;
+  }, [status?.providers, accounts]);
+
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
       <Header
@@ -186,13 +209,7 @@ export function App() {
         {/* Provider Filters Bar */}
         <div className="flex items-center justify-between gap-3 mb-6 pb-2 border-b border-zinc-200/60 dark:border-zinc-800/60">
           <div className="flex items-center gap-1.5 overflow-x-auto py-1">
-            {[
-              { id: 'all', label: 'All Providers' },
-              { id: 'google-antigravity', label: 'Google Antigravity' },
-              { id: 'anthropic', label: 'Anthropic Claude' },
-              { id: 'github-copilot', label: 'GitHub Copilot' },
-              { id: 'generic-rest', label: 'Custom APIs' }
-            ].map(tab => (
+            {availableProviderTabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setSelectedProviderFilter(tab.id)}
@@ -264,6 +281,7 @@ export function App() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={reload}
+        providers={status?.providers}
       />
 
       <SettingsModal

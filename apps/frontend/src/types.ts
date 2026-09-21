@@ -37,11 +37,40 @@ export interface User {
   shareTitle?: string;
 }
 
+export interface FormFieldDefinition {
+  key: string;
+  label: string;
+  type: 'text' | 'password' | 'select' | 'number' | 'textarea' | 'checkbox';
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: any;
+  description?: string;
+  options?: Array<{ label: string; value: string }>;
+}
+
+export interface ProviderAuthDoc {
+  title: string;
+  description: string;
+  linkText?: string;
+  linkUrl?: string;
+  steps?: string[];
+}
+
+export interface ProviderBrand {
+  name: string;
+  icon: string;
+  color: string;
+  badgeClass?: string;
+}
+
 export interface ProviderMeta {
   id: string;
   name: string;
   description: string;
-  authType: 'oauth' | 'api_key' | 'custom';
+  brand: ProviderBrand;
+  authType: 'oauth' | 'api_key' | 'credentials' | 'custom';
+  authDoc?: ProviderAuthDoc;
+  fields: FormFieldDefinition[];
 }
 
 export interface AppSettings {

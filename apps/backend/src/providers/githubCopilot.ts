@@ -7,6 +7,38 @@ export class GitHubCopilotProvider implements IProvider {
   description = 'GitHub Copilot Organization & Enterprise Usage Metrics';
   authType: 'api_key' = 'api_key';
 
+  brand = {
+    name: 'GitHub Copilot',
+    icon: 'Github',
+    color: 'purple',
+    badgeClass: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20'
+  };
+
+  authDoc = {
+    title: 'GitHub Personal Access Token',
+    description: 'Requires a GitHub Personal Access Token (classic or fine-grained) with read access to organization Copilot metrics or user rate limits.',
+    linkText: 'GitHub Token Settings',
+    linkUrl: 'https://github.com/settings/tokens'
+  };
+
+  fields = [
+    {
+      key: 'token',
+      label: 'GitHub Personal Access Token (PAT)',
+      type: 'password' as const,
+      placeholder: 'ghp_... or github_pat_...',
+      required: true
+    },
+    {
+      key: 'org',
+      label: 'GitHub Organization (Optional)',
+      type: 'text' as const,
+      placeholder: 'my-org-name',
+      required: false,
+      description: 'Leave empty for personal account rate limits.'
+    }
+  ];
+
   async fetchQuota(account: AccountRow): Promise<QuotaSnapshot> {
     const creds = JSON.parse(account.credentials);
     const token = creds.token || creds.pat || creds.apiKey;

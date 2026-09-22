@@ -37,6 +37,19 @@ export interface User {
   shareTitle?: string;
 }
 
+export interface ManagedUser {
+  id: string;
+  username: string;
+  displayName?: string;
+  role: 'admin' | 'user';
+  shareEnabled: boolean;
+  shareSlug?: string;
+  shareTitle?: string;
+  createdAt: string;
+  accountCount: number;
+}
+
+
 export interface FormFieldDefinition {
   key: string;
   label: string;

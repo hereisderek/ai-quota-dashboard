@@ -8,16 +8,18 @@ interface AddAccountModalProps {
   onClose: () => void;
   onSuccess: () => void;
   providers?: ProviderMeta[];
+  defaultProviderId?: string;
 }
 
 export const AddAccountModal: React.FC<AddAccountModalProps> = ({ 
   isOpen, 
   onClose, 
   onSuccess,
-  providers: initialProviders = []
+  providers: initialProviders = [],
+  defaultProviderId
 }) => {
   const [providers, setProviders] = useState<ProviderMeta[]>(initialProviders);
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(defaultProviderId || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +29,17 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [showManualOAuth, setShowManualOAuth] = useState(false);
+
+  // Synchronize with defaultProviderId when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      if (defaultProviderId) {
+        setSelectedProviderId(defaultProviderId);
+      } else if (!selectedProviderId && providers.length > 0) {
+        setSelectedProviderId(providers[0].id);
+      }
+    }
+  }, [isOpen, defaultProviderId]);
 
   // Fetch providers list if not passed from parent
   useEffect(() => {
@@ -39,9 +52,15 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
           const data = await res.json();
           if (data.providers && Array.isArray(data.providers)) {
             setProviders(data.providers);
-            if (!selectedProviderId && data.providers.length > 0) {
-              setSelectedProviderId(data.providers[0].id);
-            }
+            setSelectedProviderId(prev => {
+              if (prev && data.providers.some((p: any) => p.id === prev)) {
+                return prev;
+              }
+              if (defaultProviderId && data.providers.some((p: any) => p.id === defaultProviderId)) {
+                return defaultProviderId;
+              }
+              return data.providers[0]?.id || '';
+            });
           }
         }
       } catch (err) {
@@ -50,14 +69,22 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
     };
 
     fetchProviders();
-  }, [isOpen]);
+  }, [isOpen, defaultProviderId]);
 
-  // Set default selected provider
+  // Ensure selected provider is valid if providers change
   useEffect(() => {
-    if (providers.length > 0 && (!selectedProviderId || !providers.some(p => p.id === selectedProviderId))) {
-      setSelectedProviderId(providers[0].id);
+    if (providers.length > 0) {
+      setSelectedProviderId(prev => {
+        if (prev && providers.some(p => p.id === prev)) {
+          return prev;
+        }
+        if (defaultProviderId && providers.some(p => p.id === defaultProviderId)) {
+          return defaultProviderId;
+        }
+        return providers[0].id;
+      });
     }
-  }, [providers, selectedProviderId]);
+  }, [providers, defaultProviderId]);
 
   // Reset form when changing provider
   useEffect(() => {
@@ -156,14 +183,14 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-sm animate-fade-in"
     >
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-lg w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-3xl w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:h-[620px]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-5 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
           <div>
             <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Connect AI Provider</h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">Add an account to monitor quotas and rate limits</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">Select a provider and configure credentials to monitor quotas</p>
           </div>
           <button
             onClick={onClose}
@@ -173,37 +200,101 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
           </button>
         </div>
 
-        {/* Dynamic Provider Tabs */}
-        <div className="p-2 bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-200/60 dark:border-zinc-800 shrink-0 overflow-x-auto flex gap-1.5 no-scrollbar">
-          {providers.map(p => {
-            const isSelected = p.id === selectedProviderId;
-            return (
-              <button
-                key={p.id}
-                onClick={() => { setSelectedProviderId(p.id); setError(null); }}
-                className={`flex items-center gap-2 py-2 px-3 rounded-xl text-xs font-medium whitespace-nowrap transition shrink-0 ${
-                  isSelected
-                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/80 dark:border-zinc-700/80'
-                    : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40'
-                }`}
-              >
-                <ProviderIcon name={p.brand?.icon || p.id} className="w-4 h-4 shrink-0" />
-                <span>{p.name}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Modal Content: Left Master List + Right Detail Form (No horizontal scroll!) */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+          {/* Mobile Provider Selector (Grid layout wraps cleanly - no horizontal scroll) */}
+          <div className="grid grid-cols-2 gap-1.5 p-3 border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 md:hidden shrink-0">
+            {providers.map(p => {
+              const isSelected = p.id === selectedProviderId;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setSelectedProviderId(p.id); setError(null); }}
+                  className={`flex items-center gap-2 p-2 rounded-xl text-left transition ${
+                    isSelected
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/80 dark:border-zinc-700 font-semibold'
+                      : 'text-zinc-600 dark:text-zinc-400 bg-zinc-100/70 dark:bg-zinc-900 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <ProviderIcon name={p.brand?.icon || p.id} className="w-4 h-4 shrink-0" />
+                  <span className="text-xs truncate">{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Tab Body */}
-        <div className="p-5 overflow-y-auto space-y-4">
-          {error && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-400">
-              {error}
+          {/* Desktop Left Sidebar: Vertical Provider List */}
+          <div className="hidden md:flex flex-col w-64 shrink-0 border-r border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/40 p-3 space-y-1 overflow-y-auto">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 px-2 py-1">
+              Providers
             </div>
-          )}
+            {providers.map(p => {
+              const isSelected = p.id === selectedProviderId;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setSelectedProviderId(p.id); setError(null); }}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition ${
+                    isSelected
+                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200/80 dark:border-zinc-700 font-semibold'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/40 hover:text-zinc-900 dark:hover:text-zinc-200 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                      isSelected
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+                    }`}>
+                      <ProviderIcon name={p.brand?.icon || p.id} className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs truncate block">{p.name}</span>
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate block font-normal">
+                        {p.authType === 'oauth' ? '1-Click OAuth' : 'API Key / Token'}
+                      </span>
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mr-0.5" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
-          {currentProvider && (
+          {/* Right Panel: Detail Configuration Form */}
+          <div className="flex-1 p-5 md:p-6 overflow-y-auto flex flex-col justify-between">
             <div>
+              {error && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-400">
+                  {error}
+                </div>
+              )}
+
+              {currentProvider && (
+                <div>
+                  {/* Provider Header Banner */}
+                  <div className="flex items-center gap-3 mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800/80">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-200 shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
+                      <ProviderIcon name={currentProvider.brand?.icon || currentProvider.id} className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                          {currentProvider.name}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+                          {currentProvider.authType === 'oauth' ? 'OAuth 2.0' : 'API Key'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                        {currentProvider.description}
+                      </p>
+                    </div>
+                  </div>
               {/* Provider Auth Documentation / Helper */}
               {currentProvider.authDoc && (
                 <div className="mb-4 p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/70 dark:border-zinc-800 text-xs space-y-1.5">
@@ -390,5 +481,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         </div>
       </div>
     </div>
+  </div>
+</div>
   );
 };

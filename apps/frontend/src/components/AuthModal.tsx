@@ -166,6 +166,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           >
             {isSubmitting ? 'Authenticating...' : isSetup ? 'Complete Setup' : isRegister ? 'Create Account' : 'Sign In'}
           </button>
+
+          {!isSetup && (
+            <div className="text-center pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setError(null);
+                }}
+                className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-medium hover:underline transition"
+              >
+                {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "test": "npm run test -w apps/backend",
     "start": "npm run start -w apps/backend",
     "dev:backend": "npm run dev -w apps/backend",
     "dev:frontend": "npm run dev -w apps/frontend"

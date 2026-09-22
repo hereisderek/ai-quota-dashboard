@@ -5,11 +5,13 @@ import { accountRepo, userRepo, sessionRepo } from '../db/index.js';
 import { AccountsStorageService } from '../services/accountsStorage.js';
 import { quotaScheduler } from '../services/scheduler.js';
 import { config } from '../config.js';
+import { parseCookie } from '../middleware/auth.js';
 
 // In-memory OAuth state storage for CSRF protection & associating user
 const pendingOAuthStates = new Map<string, { createdAt: number; userId?: string }>();
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
+
   /**
    * Check Setup Status
    */
@@ -93,41 +95,54 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
-   * User Registration (by Admin or if 0 users)
+   * User Registration (Public self-registration or by Admin)
    */
   fastify.post('/api/auth/register', async (req, reply) => {
     const isFirstUser = userRepo.count() === 0;
     const currentUser = req.user;
-
-    // Only allow self-registration for the first user or by an admin
-    if (!isFirstUser && (!currentUser || currentUser.role !== 'admin')) {
-      return reply.status(403).send({ error: 'Only administrators can create new users' });
-    }
 
     const { username, password, displayName, role } = (req.body as any) || {};
     if (!username || !password) {
       return reply.status(400).send({ error: 'Username and password are required' });
     }
 
-    if (userRepo.getByUsername(username)) {
+    const trimmedUsername = username.trim();
+    if (trimmedUsername.length < 2) {
+      return reply.status(400).send({ error: 'Username must be at least 2 characters' });
+    }
+
+    if (password.length < 4) {
+      return reply.status(400).send({ error: 'Password must be at least 4 characters' });
+    }
+
+    if (userRepo.getByUsername(trimmedUsername)) {
       return reply.status(400).send({ error: 'Username is already taken' });
     }
 
+    // Only existing admins can assign admin role; public registration is always standard 'user'
+    const assignedRole = isFirstUser ? 'admin' : (currentUser?.role === 'admin' && role ? role : 'user');
+
     const newUser = userRepo.create({
-      username,
+      username: trimmedUsername,
       password,
-      displayName,
-      role: isFirstUser ? 'admin' : (role || 'user')
+      displayName: displayName?.trim() || undefined,
+      role: assignedRole
     });
+
+    const token = sessionRepo.create(newUser.id);
+    reply.header('Set-Cookie', `ai_quota_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}`);
 
     return {
       success: true,
+      token,
       user: {
         id: newUser.id,
         username: newUser.username,
         displayName: newUser.display_name,
         role: newUser.role,
-        shareSlug: newUser.share_slug
+        shareEnabled: newUser.share_enabled === 1,
+        shareSlug: newUser.share_slug,
+        shareTitle: newUser.share_title
       }
     };
   });
@@ -137,12 +152,168 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post('/api/auth/logout', async (req, reply) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader?.replace(/^Bearer\s+/i, '');
+    const cookieToken = parseCookie(req.headers['cookie'], 'ai_quota_session');
+    const token = authHeader?.replace(/^Bearer\s+/i, '') || cookieToken;
     if (token) {
       sessionRepo.delete(token);
     }
-    reply.header('Set-Cookie', 'ai_quota_session=; Path=/; HttpOnly; Max-Age=0');
+    reply.header(
+      'Set-Cookie',
+      'ai_quota_session=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0'
+    );
     return { success: true };
+  });
+
+  /**
+   * Admin: List All Users
+   */
+  fastify.get('/api/auth/users', async (req, reply) => {
+    if (!req.user || req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Administrator privileges required' });
+    }
+
+    const users = userRepo.getAll();
+    const usersWithStats = users.map(u => {
+      const userAccounts = accountRepo.getAll(u.id);
+      return {
+        id: u.id,
+        username: u.username,
+        displayName: u.display_name,
+        role: u.role,
+        shareEnabled: u.share_enabled === 1,
+        shareSlug: u.share_slug,
+        shareTitle: u.share_title,
+        createdAt: u.created_at,
+        accountCount: userAccounts.length
+      };
+    });
+
+    return { users: usersWithStats };
+  });
+
+  /**
+   * Admin: Create User
+   */
+  fastify.post('/api/auth/users', async (req, reply) => {
+    if (!req.user || req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Administrator privileges required' });
+    }
+
+    const { username, password, displayName, role } = (req.body as any) || {};
+    if (!username || !password) {
+      return reply.status(400).send({ error: 'Username and password are required' });
+    }
+
+    const trimmedUsername = username.trim();
+    if (userRepo.getByUsername(trimmedUsername)) {
+      return reply.status(400).send({ error: 'Username is already taken' });
+    }
+
+    const newUser = userRepo.create({
+      username: trimmedUsername,
+      password,
+      displayName: displayName?.trim() || trimmedUsername,
+      role: role === 'admin' ? 'admin' : 'user'
+    });
+
+    return {
+      success: true,
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        displayName: newUser.display_name,
+        role: newUser.role,
+        shareSlug: newUser.share_slug,
+        createdAt: newUser.created_at,
+        accountCount: 0
+      }
+    };
+  });
+
+  /**
+   * Admin: Update User (Role, Display Name, Password)
+   */
+  fastify.put('/api/auth/users/:id', async (req, reply) => {
+    if (!req.user || req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Administrator privileges required' });
+    }
+
+    const { id } = req.params as { id: string };
+    const targetUser = userRepo.getById(id);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'User not found' });
+    }
+
+    const { role, password, displayName } = (req.body as any) || {};
+
+    // Prevent demoting the sole administrator
+    if (req.user.id === id && role && role !== 'admin') {
+      const adminCount = userRepo.getAll().filter(u => u.role === 'admin').length;
+      if (adminCount <= 1) {
+        return reply.status(400).send({ error: 'Cannot demote the sole administrator' });
+      }
+    }
+
+    if (role && (role === 'admin' || role === 'user')) {
+      userRepo.updateRole(id, role);
+    }
+
+    if (password && password.length >= 4) {
+      userRepo.updatePassword(id, password);
+    }
+
+    if (displayName !== undefined) {
+      // Update display name via db
+      const db = (await import('../db/index.js')).getDb();
+      db.prepare('UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?').run(
+        displayName.trim() || targetUser.username,
+        new Date().toISOString(),
+        id
+      );
+    }
+
+    const updated = userRepo.getById(id)!;
+    return {
+      success: true,
+      user: {
+        id: updated.id,
+        username: updated.username,
+        displayName: updated.display_name,
+        role: updated.role,
+        shareSlug: updated.share_slug,
+        createdAt: updated.created_at
+      }
+    };
+  });
+
+  /**
+   * Admin: Delete User
+   */
+  fastify.delete('/api/auth/users/:id', async (req, reply) => {
+    if (!req.user || req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Administrator privileges required' });
+    }
+
+    const { id } = req.params as { id: string };
+
+    if (req.user.id === id) {
+      return reply.status(400).send({ error: 'Cannot delete your own active administrator account' });
+    }
+
+    const targetUser = userRepo.getById(id);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'User not found' });
+    }
+
+    const deleted = userRepo.delete(id);
+    if (!deleted) {
+      return reply.status(500).send({ error: 'Failed to delete user' });
+    }
+
+    // Sync accounts file to disk since accounts were cascaded
+    AccountsStorageService.syncDbToDisk();
+
+    return { success: true, message: `User ${targetUser.username} successfully deleted` };
   });
 
   /**

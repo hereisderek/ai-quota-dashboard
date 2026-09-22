@@ -7,8 +7,10 @@ import { AddAccountModal } from './components/AddAccountModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { AuthModal } from './components/AuthModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { ShareView } from './pages/ShareView';
-import { Plus, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { Plus, CheckCircle2, AlertCircle, Sparkles, ArrowUpDown, Lock, LogIn } from 'lucide-react';
+import { Account } from './types';
 
 export function App() {
   // Check if current URL is a public share route (e.g. /share/derek)
@@ -28,6 +30,7 @@ export function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -109,21 +112,46 @@ export function App() {
     return acc.providerId === selectedProviderFilter;
   });
 
+  // Sort accounts based on user preference: default to low-to-high
+  const [sortOption, setSortOption] = useState<'low-to-high' | 'high-to-low' | 'name' | 'recent'>('low-to-high');
+
+  const sortedAccounts = useMemo(() => {
+    const list = [...filteredAccounts];
+    const getMinRemaining = (acc: Account) => {
+      if (!acc.buckets || acc.buckets.length === 0) return 1.0;
+      return Math.min(...acc.buckets.map(b => b.remainingFraction));
+    };
+
+    if (sortOption === 'low-to-high') {
+      return list.sort((a, b) => getMinRemaining(a) - getMinRemaining(b));
+    }
+    if (sortOption === 'high-to-low') {
+      return list.sort((a, b) => getMinRemaining(b) - getMinRemaining(a));
+    }
+    if (sortOption === 'name') {
+      return list.sort((a, b) => a.label.localeCompare(b.label));
+    }
+    if (sortOption === 'recent') {
+      return list.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    }
+    return list;
+  }, [filteredAccounts, sortOption]);
+
   // Calculate dynamic masonry flex columns
   const numColumns = useMemo(() => {
-    if (windowWidth < 768 || filteredAccounts.length <= 1) return 1;
-    if (windowWidth < 1280 || filteredAccounts.length === 2) return 2;
-    return Math.min(filteredAccounts.length, 3);
-  }, [windowWidth, filteredAccounts.length]);
+    if (windowWidth < 768 || sortedAccounts.length <= 1) return 1;
+    if (windowWidth < 1280 || sortedAccounts.length === 2) return 2;
+    return Math.min(sortedAccounts.length, 3);
+  }, [windowWidth, sortedAccounts.length]);
 
   // Distribute accounts into columns based on height/weight to stack smaller cards vertically
   const accountColumns = useMemo(() => {
-    if (numColumns <= 1) return [filteredAccounts];
+    if (numColumns <= 1) return [sortedAccounts];
 
-    const cols: typeof filteredAccounts[] = Array.from({ length: numColumns }, () => []);
+    const cols: typeof sortedAccounts[] = Array.from({ length: numColumns }, () => []);
     const heights = new Array(numColumns).fill(0);
 
-    for (const account of filteredAccounts) {
+    for (const account of sortedAccounts) {
       // Find column with least accumulated height
       let shortestCol = 0;
       for (let i = 1; i < numColumns; i++) {
@@ -136,7 +164,7 @@ export function App() {
       heights[shortestCol] += 180 + (account.buckets?.length || 1) * 65 + (account.lastError ? 50 : 0);
     }
     return cols;
-  }, [filteredAccounts, numColumns]);
+  }, [sortedAccounts, numColumns]);
 
   // Dynamically compute available provider filter tabs
   const availableProviderTabs = useMemo(() => {
@@ -171,10 +199,32 @@ export function App() {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onRefreshAll={refreshAll}
-        onOpenAddModal={() => setIsAddModalOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenShareModal={() => setIsShareModalOpen(true)}
+        onOpenAddModal={() => {
+          if (!currentUser) {
+            setIsSetupMode(false);
+            setIsAuthModalOpen(true);
+          } else {
+            setIsAddModalOpen(true);
+          }
+        }}
+        onOpenSettings={() => {
+          if (!currentUser) {
+            setIsSetupMode(false);
+            setIsAuthModalOpen(true);
+          } else {
+            setIsSettingsOpen(true);
+          }
+        }}
+        onOpenShareModal={() => {
+          if (!currentUser) {
+            setIsSetupMode(false);
+            setIsAuthModalOpen(true);
+          } else {
+            setIsShareModalOpen(true);
+          }
+        }}
         onOpenAuthModal={() => { setIsSetupMode(false); setIsAuthModalOpen(true); }}
+        onOpenUserManagement={() => setIsUserManagementOpen(true)}
         onLogout={logout}
       />
 
@@ -206,8 +256,8 @@ export function App() {
         {/* Overview Stats */}
         <OverviewStats accounts={accounts} />
 
-        {/* Provider Filters Bar */}
-        <div className="flex items-center justify-between gap-3 mb-6 pb-2 border-b border-zinc-200/60 dark:border-zinc-800/60">
+        {/* Provider Filters & Sort Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-2 border-b border-zinc-200/60 dark:border-zinc-800/60">
           <div className="flex items-center gap-1.5 overflow-x-auto py-1">
             {availableProviderTabs.map(tab => (
               <button
@@ -224,8 +274,25 @@ export function App() {
             ))}
           </div>
 
-          <div className="text-xs text-zinc-400 shrink-0 hidden sm:block">
-            Showing {filteredAccounts.length} of {accounts.length}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="hidden sm:inline">Sort:</span>
+              <select
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as any)}
+                className="bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/70 dark:border-zinc-700/70 text-zinc-800 dark:text-zinc-200 text-xs rounded-xl px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+              >
+                <option value="low-to-high">Lowest Quota First (Low → High)</option>
+                <option value="high-to-low">Highest Quota First (High → Low)</option>
+                <option value="name">Provider Name</option>
+                <option value="recent">Recently Updated</option>
+              </select>
+            </div>
+
+            <div className="text-xs text-zinc-400 shrink-0 hidden md:block">
+              Showing {sortedAccounts.length} of {accounts.length}
+            </div>
           </div>
         </div>
 
@@ -234,11 +301,11 @@ export function App() {
           <div className="py-20 text-center text-zinc-400 text-sm animate-pulse">
             Loading quota streams...
           </div>
-        ) : filteredAccounts.length > 0 ? (
+        ) : sortedAccounts.length > 0 ? (
           <div className={
-            filteredAccounts.length === 1
+            sortedAccounts.length === 1
               ? "max-w-2xl mx-auto w-full"
-              : filteredAccounts.length === 2
+              : sortedAccounts.length === 2
               ? "flex flex-col md:flex-row gap-6 items-start max-w-5xl mx-auto w-full"
               : "flex flex-col md:flex-row gap-6 items-start w-full"
           }>
@@ -255,22 +322,48 @@ export function App() {
               </div>
             ))}
           </div>
+        ) : !currentUser ? (
+          /* Unauthenticated State */
+          <div className="py-20 text-center max-w-md mx-auto animate-fade-in">
+            <div className="w-16 h-16 rounded-3xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center mx-auto text-zinc-400 mb-4 shadow-inner">
+              <Lock className="w-8 h-8 text-emerald-500" />
+            </div>
+            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+              Sign In to Access Dashboard
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-6">
+              You are currently browsing without an active session. Sign in to view your token quotas, live streams, and manage connected AI providers.
+            </p>
+            <button
+              onClick={() => { setIsSetupMode(false); setIsAuthModalOpen(true); }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition active:scale-95"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </button>
+          </div>
         ) : (
-          /* Empty State */
-          <div className="py-20 text-center max-w-md mx-auto">
+          /* Empty Accounts State */
+          <div className="py-20 text-center max-w-md mx-auto animate-fade-in">
             <div className="w-16 h-16 rounded-3xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center mx-auto text-zinc-400 mb-4 shadow-inner">
               <Sparkles className="w-8 h-8 text-emerald-500" />
             </div>
-            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">No accounts connected yet</h3>
+            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+              {selectedProviderFilter !== 'all'
+                ? `No ${status?.providers?.find(p => p.id === selectedProviderFilter)?.name || selectedProviderFilter} accounts connected`
+                : 'No accounts connected yet'}
+            </h3>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-6">
-              Connect your Google Antigravity, Anthropic Claude, or GitHub Copilot accounts to begin real-time quota tracking.
+              {selectedProviderFilter !== 'all'
+                ? `Connect your ${status?.providers?.find(p => p.id === selectedProviderFilter)?.name || selectedProviderFilter} account or API key to track token quotas and usage.`
+                : 'Connect your Google Antigravity, Anthropic Claude, DeepSeek, or other accounts to begin real-time quota tracking.'}
             </p>
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>Connect First Account</span>
+              <span>Connect {selectedProviderFilter !== 'all' ? (status?.providers?.find(p => p.id === selectedProviderFilter)?.name || selectedProviderFilter) : 'First Account'}</span>
             </button>
           </div>
         )}
@@ -282,6 +375,7 @@ export function App() {
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={reload}
         providers={status?.providers}
+        defaultProviderId={selectedProviderFilter !== 'all' ? selectedProviderFilter : undefined}
       />
 
       <SettingsModal
@@ -297,6 +391,12 @@ export function App() {
         onClose={() => setIsShareModalOpen(false)}
         currentUser={currentUser}
         onUpdateSuccess={reloadMetadata}
+      />
+
+      <UserManagementModal
+        isOpen={isUserManagementOpen}
+        onClose={() => setIsUserManagementOpen(false)}
+        currentUser={currentUser}
       />
 
       <AuthModal

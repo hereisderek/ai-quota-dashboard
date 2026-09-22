@@ -118,6 +118,43 @@ export const userRepo = {
       now,
       userId
     );
+  },
+
+  updateRole(userId: string, role: 'admin' | 'user'): void {
+    const db = getDb();
+    const now = new Date().toISOString();
+    db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, now, userId);
+  },
+
+  updatePassword(userId: string, password: string): void {
+    const db = getDb();
+    const hash = this.hashPassword(password);
+    const now = new Date().toISOString();
+    db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(hash, now, userId);
+    // Invalidate old sessions so password change forces re-login
+    sessionRepo.deleteByUserId(userId);
+  },
+
+  delete(userId: string): boolean {
+    const db = getDb();
+    const user = this.getById(userId);
+    if (!user) return false;
+
+    // Delete quota snapshots belonging to user's accounts
+    db.prepare(`
+      DELETE FROM quota_snapshots 
+      WHERE account_id IN (SELECT id FROM accounts WHERE user_id = ?)
+    `).run(userId);
+
+    // Delete accounts
+    db.prepare('DELETE FROM accounts WHERE user_id = ?').run(userId);
+
+    // Delete sessions
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+
+    // Delete user
+    const res = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    return Number(res.changes) > 0;
   }
 };
 
@@ -157,9 +194,15 @@ export const sessionRepo = {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   },
 
+  deleteByUserId(userId: string): void {
+    const db = getDb();
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  },
+
   cleanupExpired(): void {
     const db = getDb();
     const now = new Date().toISOString();
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
   }
 };
+

@@ -73,14 +73,14 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
   // System Status
   fastify.get('/api/status', async (req) => {
     const userId = req.user?.id;
-    const accounts = userId ? accountRepo.getAll(userId) : accountRepo.getAll();
+    const totalAccounts = userId ? accountRepo.getAll(userId).length : 0;
     return {
       status: 'ok',
       version: '1.1.0',
       uptimeSeconds: Math.round(process.uptime()),
       dataDir: config.dataDir,
       authMode: config.authMode,
-      totalAccounts: accounts.length,
+      totalAccounts,
       activeClients: wsHub.getClientCount(),
       currentUser: req.user ? {
         id: req.user.id,

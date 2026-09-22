@@ -9,7 +9,7 @@ declare module 'fastify' {
   }
 }
 
-function parseCookie(cookieHeader: string | undefined, name: string): string | null {
+export function parseCookie(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : null;
@@ -31,19 +31,23 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply): 
     }
   }
 
-  // 2. Whitelisted public endpoints (always accessible)
+  // 2. Frontend web UI & static assets (always accessible)
+  if (!path.startsWith('/api') && path !== '/ws') {
+    return;
+  }
+
+  // 3. Whitelisted public API endpoints (always accessible)
   if (
     path.startsWith('/api/auth/google/callback') ||
     path.startsWith('/api/auth/google/start') ||
     path === '/api/auth/login' ||
     path === '/api/auth/logout' ||
+    path === '/api/auth/register' ||
     path === '/api/auth/setup-status' ||
     path === '/api/auth/setup' ||
     path.startsWith('/api/share/') ||
     path === '/api/status' ||
-    path.startsWith('/assets') ||
-    path === '/favicon.ico' ||
-    path === '/robots.txt'
+    path === '/api/providers'
   ) {
     return;
   }
@@ -54,15 +58,6 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply): 
   }
 
   const mode = config.authMode;
-
-  // If auth mode is none, fallback to primary admin user so single-user / open mode works out of the box
-  if (mode === 'none') {
-    const allUsers = userRepo.getAll();
-    if (allUsers.length > 0) {
-      req.user = allUsers[0];
-    }
-    return;
-  }
 
   // 3. IP Whitelist Mode
   if (mode === 'ip_whitelist') {
@@ -118,9 +113,11 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply): 
     return;
   }
 
-  // 6. Password Mode
-  if (mode === 'password') {
+  // 6. Default (None / Password):
+  // When users exist in the system, protected endpoints require authentication.
+  if (userRepo.count() > 0) {
     reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required. Please log in.' });
     return;
   }
 }
+

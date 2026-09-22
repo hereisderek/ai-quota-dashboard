@@ -18,6 +18,11 @@ export function useQuotaStream() {
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/accounts');
+      if (res.status === 401) {
+        setAccounts([]);
+        setError(null);
+        return;
+      }
       if (!res.ok) throw new Error(`Failed to load accounts (${res.status})`);
       const data = await res.json();
       setAccounts(data.accounts || []);
@@ -50,11 +55,13 @@ export function useQuotaStream() {
         const me = await meRes.json();
         setCurrentUser(prev => {
           if (!prev && !me.user) return null;
-          if (prev && me.user && prev.id === me.user.id && prev.shareEnabled === me.user.shareEnabled && prev.shareSlug === me.user.shareSlug && prev.shareTitle === me.user.shareTitle) {
+          if (prev && me.user && prev.id === me.user.id && prev.shareEnabled === me.user.shareEnabled && prev.shareSlug === me.user.shareSlug && prev.shareTitle === me.user.shareTitle && prev.role === me.user.role) {
             return prev;
           }
           return me.user;
         });
+      } else if (meRes.status === 401) {
+        setCurrentUser(null);
       }
     } catch (err) {
       console.warn('[Stream] Metadata fetch error:', err);
@@ -186,11 +193,13 @@ export function useQuotaStream() {
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      setCurrentUser(null);
-      await fetchAccounts();
-      await fetchMetadata();
     } catch (err) {
       console.error('Logout error:', err);
+    } finally {
+      setCurrentUser(null);
+      setAccounts([]);
+      await fetchMetadata();
+      await fetchAccounts();
     }
   };
 

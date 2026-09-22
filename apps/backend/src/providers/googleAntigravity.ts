@@ -226,98 +226,138 @@ export class GoogleAntigravityProvider implements IProvider {
     let rawQuotaJson = '';
 
     // Step 2: Quota extraction
-    // Google Cloud Code PA provides `retrieveUserQuotaSummary` which works for both
-    // consumer accounts (project: 'aicode-consumers') and GCP enterprise projects.
+    // Query both daily-cloudcode-pa and cloudcode-pa endpoints to capture internal/developer Antigravity quotas
+    // as well as production Cloud Code quotas. Pick the bucket with the lowest remainingFraction (highest usage).
     const quotaProject = companionProject || 'aicode-consumers';
     let quotaSummaryData: any = null;
 
-    try {
-      // 2a. Primary endpoint: retrieveUserQuotaSummary (grouped into 5h and weekly windows)
-      const summaryRes = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${creds.accessToken}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'antigravity/1.11.0'
-        },
-        body: JSON.stringify({
-          project: quotaProject
-        })
-      });
+    const summaryEndpoints = [
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary'
+    ];
 
-      if (summaryRes.ok) {
-        quotaSummaryData = await summaryRes.json();
-        const groups = quotaSummaryData.groups || [];
-        for (const g of groups) {
-          const groupBuckets = g.buckets || [];
-          for (const b of groupBuckets) {
-            const fraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
-            buckets.push({
-              modelId: b.bucketId || 'quota',
-              tokenType: b.window ? b.window.toUpperCase() : 'QUOTA',
-              remainingFraction: Math.max(0, Math.min(1, fraction)),
-              remainingAmount: null,
-              limitAmount: null,
-              resetTime: b.resetTime || null,
-              usedPercent: Math.round((1 - fraction) * 100)
-            });
-          }
-        }
-      } else {
-        console.warn(`[GoogleAntigravity] retrieveUserQuotaSummary returned ${summaryRes.status}:`, await summaryRes.text());
-      }
-    } catch (err: any) {
-      console.warn('[GoogleAntigravity] Failed to fetch retrieveUserQuotaSummary:', err.message);
-    }
+    const bucketMap = new Map<string, BucketInfo>();
+    let primaryPayload: any = null;
 
-    // 2b. Secondary fallback: retrieveUserQuota (per-model WTUS buckets)
-    if (buckets.length === 0) {
+    for (const endpoint of summaryEndpoints) {
       try {
-        const quotaRes = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
+        const summaryRes = await fetch(endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${creds.accessToken}`,
             'Content-Type': 'application/json',
-            'User-Agent': 'antigravity/1.11.0'
+            'User-Agent': 'antigravity/2.15.1'
           },
           body: JSON.stringify({
             project: quotaProject
           })
         });
 
-        if (quotaRes.ok) {
-          const quotaData: any = await quotaRes.json();
-          const rawBuckets = quotaData.buckets || [];
-          buckets = rawBuckets.map((b: any) => {
-            const remainingFraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
-            const remainingAmount = typeof b.remainingAmount === 'number' ? b.remainingAmount 
-              : typeof b.remainingCount === 'number' ? b.remainingCount
-              : typeof b.remainingUnits === 'number' ? b.remainingUnits
-              : typeof b.availableAmount === 'number' ? b.availableAmount
-              : null;
-            const limitAmount = typeof b.limitAmount === 'number' ? b.limitAmount
-              : typeof b.quotaLimit === 'number' ? b.quotaLimit
-              : typeof b.totalLimit === 'number' ? b.totalLimit
-              : typeof b.maxUnits === 'number' ? b.maxUnits
-              : null;
+        if (summaryRes.ok) {
+          const data: any = await summaryRes.json();
+          if (!primaryPayload || (endpoint.includes('daily') && data.groups?.length)) {
+            primaryPayload = data;
+          }
+          const groups = data.groups || [];
+          for (const g of groups) {
+            const groupBuckets = g.buckets || [];
+            for (const b of groupBuckets) {
+              const bucketKey = b.bucketId || `${g.displayName}-${b.window}`;
+              const fraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
+              const usedPercent = Math.round((1 - fraction) * 100);
 
-            return {
-              modelId: b.modelId || 'general',
-              tokenType: b.tokenType || 'WTUS',
-              remainingFraction: Math.max(0, Math.min(1, remainingFraction)),
-              remainingAmount,
-              limitAmount,
-              resetTime: b.resetTime || null,
-              usedPercent: Math.round((1 - remainingFraction) * 100)
-            };
-          });
-          quotaSummaryData = quotaData;
+              const candidate: BucketInfo = {
+                modelId: b.bucketId || 'quota',
+                tokenType: b.window ? b.window.toUpperCase() : 'QUOTA',
+                remainingFraction: Math.max(0, Math.min(1, fraction)),
+                remainingAmount: null,
+                limitAmount: null,
+                resetTime: b.resetTime || null,
+                usedPercent
+              };
+
+              const existing = bucketMap.get(bucketKey);
+              if (!existing) {
+                bucketMap.set(bucketKey, candidate);
+              } else {
+                // If candidate reports lower remaining fraction (higher actual token usage), prefer candidate
+                if (candidate.remainingFraction < existing.remainingFraction) {
+                  bucketMap.set(bucketKey, candidate);
+                }
+              }
+            }
+          }
         } else {
-          const errText = await quotaRes.text();
-          console.warn(`[GoogleAntigravity] retrieveUserQuota returned ${quotaRes.status}:`, errText);
+          console.warn(`[GoogleAntigravity] ${endpoint} returned ${summaryRes.status}:`, await summaryRes.text());
         }
       } catch (err: any) {
-        console.warn('[GoogleAntigravity] Failed to fetch retrieveUserQuota:', err.message);
+        console.warn(`[GoogleAntigravity] Failed to fetch ${endpoint}:`, err.message);
+      }
+    }
+
+    if (bucketMap.size > 0) {
+      buckets = Array.from(bucketMap.values());
+      quotaSummaryData = primaryPayload;
+    }
+
+    // 2b. Secondary fallback: retrieveUserQuota (per-model WTUS buckets)
+    if (buckets.length === 0) {
+      const quotaEndpoints = [
+        'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',
+        'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota'
+      ];
+
+      for (const endpoint of quotaEndpoints) {
+        try {
+          const quotaRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${creds.accessToken}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'antigravity/2.15.1'
+            },
+            body: JSON.stringify({
+              project: quotaProject
+            })
+          });
+
+          if (quotaRes.ok) {
+            const quotaData: any = await quotaRes.json();
+            const rawBuckets = quotaData.buckets || [];
+            if (rawBuckets.length > 0) {
+              buckets = rawBuckets.map((b: any) => {
+                const remainingFraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0;
+                const remainingAmount = typeof b.remainingAmount === 'number' ? b.remainingAmount 
+                  : typeof b.remainingCount === 'number' ? b.remainingCount
+                  : typeof b.remainingUnits === 'number' ? b.remainingUnits
+                  : typeof b.availableAmount === 'number' ? b.availableAmount
+                  : null;
+                const limitAmount = typeof b.limitAmount === 'number' ? b.limitAmount
+                  : typeof b.quotaLimit === 'number' ? b.quotaLimit
+                  : typeof b.totalLimit === 'number' ? b.totalLimit
+                  : typeof b.maxUnits === 'number' ? b.maxUnits
+                  : null;
+
+                return {
+                  modelId: b.modelId || 'general',
+                  tokenType: b.tokenType || 'WTUS',
+                  remainingFraction: Math.max(0, Math.min(1, remainingFraction)),
+                  remainingAmount,
+                  limitAmount,
+                  resetTime: b.resetTime || null,
+                  usedPercent: Math.round((1 - remainingFraction) * 100)
+                };
+              });
+              quotaSummaryData = quotaData;
+              break;
+            }
+          } else {
+            const errText = await quotaRes.text();
+            console.warn(`[GoogleAntigravity] ${endpoint} returned ${quotaRes.status}:`, errText);
+          }
+        } catch (err: any) {
+          console.warn(`[GoogleAntigravity] Failed to fetch ${endpoint}:`, err.message);
+        }
       }
     }
 

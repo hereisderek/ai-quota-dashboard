@@ -13,7 +13,8 @@ import {
   Code2,
   Copy,
   Check,
-  Server
+  Server,
+  ArrowUpDown
 } from 'lucide-react';
 import { Account } from '../types';
 import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
@@ -30,6 +31,16 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [sortAsc, setSortAsc] = useState(true);
+
+  // Sort buckets from low to high remaining quota (or high to low if toggled)
+  const sortedBuckets = React.useMemo(() => {
+    return [...(account.buckets || [])].sort((a, b) => {
+      return sortAsc
+        ? a.remainingFraction - b.remainingFraction
+        : b.remainingFraction - a.remainingFraction;
+    });
+  }, [account.buckets, sortAsc]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -161,10 +172,25 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
           </div>
         )}
 
+        {/* Quota Buckets List Header */}
+        {account.buckets && account.buckets.length > 1 && (
+          <div className="mt-4 flex items-center justify-between text-[11px] text-zinc-400">
+            <span className="font-medium text-zinc-500 dark:text-zinc-400">Quota Limits</span>
+            <button
+              onClick={() => setSortAsc(!sortAsc)}
+              className="inline-flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition font-mono px-1.5 py-0.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              title="Toggle sort order"
+            >
+              <ArrowUpDown className="w-3 h-3" />
+              <span>{sortAsc ? 'Low → High' : 'High → Low'}</span>
+            </button>
+          </div>
+        )}
+
         {/* Quota Buckets List */}
-        <div className="mt-4 space-y-3">
-          {account.buckets && account.buckets.length > 0 ? (
-            account.buckets.map((bucket, idx) => {
+        <div className="mt-2.5 space-y-3">
+          {sortedBuckets.length > 0 ? (
+            sortedBuckets.map((bucket, idx) => {
               const colors = getQuotaColor(bucket.remainingFraction);
               const remainingPercent = Math.round(bucket.remainingFraction * 100);
               const countdown = formatCountdown(bucket.resetTime);

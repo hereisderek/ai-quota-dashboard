@@ -84,7 +84,14 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const accounts = data?.accounts || [];
+  const accounts = useMemo(() => {
+    const list = [...(data?.accounts || [])];
+    const getMinRemaining = (acc: any) => {
+      if (!acc.buckets || acc.buckets.length === 0) return 1.0;
+      return Math.min(...acc.buckets.map((b: any) => b.remainingFraction));
+    };
+    return list.sort((a, b) => getMinRemaining(a) - getMinRemaining(b));
+  }, [data?.accounts]);
 
   const numColumns = useMemo(() => {
     if (windowWidth < 768 || accounts.length <= 1) return 1;
@@ -229,7 +236,7 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
                         {/* Model Buckets */}
                         <div className="space-y-3">
                           {acc.buckets && acc.buckets.length > 0 ? (
-                            acc.buckets.map((b, idx) => {
+                            [...(acc.buckets || [])].sort((a, b) => a.remainingFraction - b.remainingFraction).map((b, idx) => {
                               const colors = getQuotaColor(b.remainingFraction);
                               const remainingPercent = Math.round(b.remainingFraction * 100);
                               const countdown = formatCountdown(b.resetTime);

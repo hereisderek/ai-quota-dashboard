@@ -104,6 +104,23 @@ test('Empty DATA_DIR self-initialization and multi-user isolation', async () => 
   });
   assert.equal(userRepo.getById(user2.id)?.share_enabled, 0);
 
+  // Test 6: User Management - Role Updates & Cascading Deletion
+  userRepo.updateRole(user2.id, 'admin');
+  assert.equal(userRepo.getById(user2.id)?.role, 'admin');
+
+  // Verify accounts & sessions exist before delete
+  assert.equal(accountRepo.getAll(user2.id).length, 1);
+  assert.ok(sessionRepo.getUserByToken(token));
+
+  // Delete user
+  const deleted = userRepo.delete(user2.id);
+  assert.equal(deleted, true);
+  assert.equal(userRepo.getById(user2.id), undefined);
+
+  // Verify accounts and sessions are cascaded/cleaned up
+  assert.equal(accountRepo.getAll(user2.id).length, 0);
+  assert.equal(sessionRepo.getUserByToken(token), null);
+
   // Stop watcher & clean up
   const { AccountsStorageService } = await import('../services/accountsStorage.js');
   AccountsStorageService.stopWatcher();

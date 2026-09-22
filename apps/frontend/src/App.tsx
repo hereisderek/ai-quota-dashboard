@@ -383,6 +383,7 @@ export function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         status={status}
+        currentUser={currentUser}
         onSave={reload}
       />
 

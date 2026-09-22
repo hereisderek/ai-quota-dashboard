@@ -344,6 +344,38 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Change Own Password (requires current password)
+   */
+  fastify.post('/api/auth/change-password', async (req, reply) => {
+    if (!req.user) {
+      return reply.status(401).send({ error: 'Not authenticated' });
+    }
+
+    const { currentPassword, newPassword } = (req.body as any) || {};
+    if (!currentPassword || !newPassword) {
+      return reply.status(400).send({ error: 'Current and new password are required' });
+    }
+
+    if (newPassword.length < 4) {
+      return reply.status(400).send({ error: 'New password must be at least 4 characters' });
+    }
+
+    const user = userRepo.getById(req.user.id);
+    if (!user || !userRepo.verifyPassword(currentPassword, user.password_hash)) {
+      return reply.status(401).send({ error: 'Current password is incorrect' });
+    }
+
+    // Invalidates all existing sessions for this user, including the current one
+    userRepo.updatePassword(user.id, newPassword);
+
+    // Issue a fresh session so the user stays logged in
+    const token = sessionRepo.create(user.id);
+    reply.header('Set-Cookie', `ai_quota_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}`);
+
+    return { success: true, token };
+  });
+
+  /**
    * Update Share Settings (Turn ON/OFF, set slug/title)
    */
   fastify.post('/api/auth/share-settings', async (req, reply) => {

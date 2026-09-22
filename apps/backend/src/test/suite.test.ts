@@ -104,7 +104,18 @@ test('Empty DATA_DIR self-initialization and multi-user isolation', async () => 
   });
   assert.equal(userRepo.getById(user2.id)?.share_enabled, 0);
 
-  // Test 6: User Management - Role Updates & Cascading Deletion
+  // Test 6: Password Change Invalidates Sessions
+  const bob = userRepo.create({ username: 'bob', password: 'oldpassword' });
+  const bobToken = sessionRepo.create(bob.id);
+  assert.ok(sessionRepo.getUserByToken(bobToken));
+
+  userRepo.updatePassword(bob.id, 'newpassword');
+  const updatedBob = userRepo.getById(bob.id)!;
+  assert.equal(userRepo.verifyPassword('oldpassword', updatedBob.password_hash), false);
+  assert.equal(userRepo.verifyPassword('newpassword', updatedBob.password_hash), true);
+  assert.equal(sessionRepo.getUserByToken(bobToken), null, 'old session token must be invalidated');
+
+  // Test 7: User Management - Role Updates & Cascading Deletion
   userRepo.updateRole(user2.id, 'admin');
   assert.equal(userRepo.getById(user2.id)?.role, 'admin');
 

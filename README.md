@@ -56,6 +56,47 @@ The `./data` directory will be created automatically and populated with `quota.d
 
 ---
 
+## Using the Pre-built Docker Image
+
+Every tagged release publishes a multi-arch image to the GitHub Container Registry via [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+| Tag pushed | Image published |
+|---|---|
+| `v1.2.3` (stable) | `ghcr.io/hereisderek/ai-quota-dashboard:1.2.3` and `:latest` |
+| `beta_1.2.3` (beta) | `ghcr.io/hereisderek/ai-quota-dashboard:1.2.3-beta` and `:beta` |
+
+Run it directly without cloning the repo:
+
+```bash
+docker run -d \
+  --name ai-quota-dashboard \
+  -p 3456:3456 \
+  -v "$(pwd)/data:/data" \
+  -e AUTH_MODE=none \
+  ghcr.io/hereisderek/ai-quota-dashboard:latest
+```
+
+Or point `docker-compose.yml`'s `build:` section to `image: ghcr.io/hereisderek/ai-quota-dashboard:latest` instead of building locally.
+
+---
+
+## Persisting User Data
+
+Everything the dashboard needs to survive a restart, redeploy, or version upgrade lives under the single `/data` mount:
+
+| File | Contents |
+|---|---|
+| `quota.db` (SQLite) | `users` (accounts, password hashes, roles, share settings), `sessions` (active login tokens), `accounts` (connected provider credentials), `quota_snapshots` (historical usage time series) |
+| `accounts.json` | A plain-JSON mirror of the `accounts` table, kept in sync on every account change for easy inspection/backup |
+
+**To back up**: stop the container (or just copy live, SQLite handles concurrent reads) and copy the entire `data/` directory — `cp -r data/ data-backup/` or archive it with your usual volume backup tool. Restoring is the reverse: point a fresh container at a `data/` directory containing a previous `quota.db` and it picks up right where it left off, including all users and their passwords.
+
+**Losing `/data`** (e.g. running without a volume mount) means every user, connected account, and OAuth token is gone on the next restart — the dashboard bootstraps a brand-new empty database and prompts for initial admin setup again.
+
+Changing a user's password (self-service via **Settings → Change Password**, or an admin resetting another user's password) updates the `password_hash` column in-place and invalidates that user's existing sessions — no `/data` migration needed.
+
+---
+
 ## Local Development (Without Docker)
 
 ### Prerequisites
@@ -147,6 +188,7 @@ Edit your `.env` file to customize settings:
 | `GET` | `/api/accounts/:id/history` | Historical quota time series for charts |
 | `GET` | `/api/settings` | Get polling and stream configuration |
 | `POST` | `/api/settings` | Update polling interval, websocket, or retention |
+| `POST` | `/api/auth/change-password` | Change your own password (requires current password) |
 | `GET` | `/ws` | Real-time WebSocket feed |
 
 ---

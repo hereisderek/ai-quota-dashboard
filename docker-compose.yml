@@ -16,6 +16,9 @@ services:
       - PORT=3456
       - HOST=0.0.0.0
       - AUTH_MODE=none
+      # Initial Admin credentials on first deploy:
+      # - ADMIN_USER=admin
+      # - ADMIN_PASSWORD=pass
       # To enable security, set:
       # - AUTH_MODE=token
       # - AUTH_TOKEN=your-secret-token

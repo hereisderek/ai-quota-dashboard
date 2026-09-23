@@ -418,11 +418,20 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const { shareEnabled, shareSlug, shareTitle } = (req.body as any) || {};
 
-    // Validate slug uniqueness if changed
+    // Validate slug uniqueness against existing slugs and all existing usernames
     if (shareSlug) {
-      const existing = userRepo.getByShareSlug(shareSlug);
-      if (existing && existing.id !== req.user.id) {
-        return reply.status(400).send({ error: 'This share URL slug is already taken by another user' });
+      const normalizedSlug = shareSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      
+      // 1. Check if slug matches another user's share_slug
+      const existingWithSlug = userRepo.getByShareSlug(normalizedSlug);
+      if (existingWithSlug && existingWithSlug.id !== req.user.id) {
+        return reply.status(400).send({ error: 'This share URL slug has already been used' });
+      }
+
+      // 2. Check if slug matches another user's username
+      const existingWithUsername = userRepo.getByUsername(normalizedSlug);
+      if (existingWithUsername && existingWithUsername.id !== req.user.id) {
+        return reply.status(400).send({ error: 'This share URL slug has already been used' });
       }
     }
 

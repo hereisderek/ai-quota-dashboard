@@ -61,8 +61,8 @@ export const config: AppConfig = {
   publicUrl: (process.env.PUBLIC_URL || 'http://localhost:3456').replace(/\/$/, ''),
   authMode: (process.env.AUTH_MODE as any) || 'none',
   authToken: process.env.AUTH_TOKEN,
-  authUsername: process.env.AUTH_USERNAME || 'admin',
-  authPassword: process.env.AUTH_PASSWORD,
+  authUsername: process.env.ADMIN_USER || process.env.AUTH_USERNAME || 'admin',
+  authPassword: process.env.ADMIN_PASSWORD || process.env.AUTH_PASSWORD,
   allowedIps: (process.env.ALLOWED_IPS || '127.0.0.1,::1')
     .split(',')
     .map(ip => ip.trim())

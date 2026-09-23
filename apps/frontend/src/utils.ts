@@ -1,27 +1,62 @@
-export function formatCountdown(resetTimeIso: string | null | undefined): string {
+export function formatCountdown(resetTimeIso: string | null | undefined, periodMs?: number): string {
   if (!resetTimeIso) return '';
-  const target = new Date(resetTimeIso).getTime();
+  let target = new Date(resetTimeIso).getTime();
   const now = Date.now();
-  const diff = target - now;
 
+  // If the reset is in the past and we know the period, roll forward
+  if (target <= now && periodMs && periodMs > 0) {
+    const elapsed = now - target;
+    const periodsNeeded = Math.ceil(elapsed / periodMs);
+    target = target + periodsNeeded * periodMs;
+  }
+
+  const diff = target - now;
   if (diff <= 0) return 'Resetting now';
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
+  // Build the compact countdown
+  let countdown: string;
   if (hours > 24) {
     const days = Math.floor(hours / 24);
-    return `Resets in ${days}d ${hours % 24}h`;
+    countdown = `Resets in ${days}d ${hours % 24}h`;
+  } else if (hours > 0) {
+    countdown = `Resets in ${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    countdown = `Resets in ${minutes}m ${seconds}s`;
+  } else {
+    countdown = `Resets in ${seconds}s`;
   }
-  if (hours > 0) {
-    return `Resets in ${hours}h ${minutes}m`;
+
+  // Append actual reset date/time
+  const targetDate = new Date(target);
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const time = targetDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  let dateLabel: string;
+  if (targetDate >= todayStart && targetDate < tomorrowStart) {
+    dateLabel = time;
+  } else if (hours <= 144) {
+    // Within ~6 days: show day name + time
+    const day = targetDate.toLocaleDateString(undefined, { weekday: 'short' });
+    dateLabel = `${day} ${time}`;
+  } else {
+    // Further out: show short date + time
+    const short = targetDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    dateLabel = `${short} ${time}`;
   }
-  if (minutes > 0) {
-    return `Resets in ${minutes}m ${seconds}s`;
-  }
-  return `Resets in ${seconds}s`;
+
+  return `${countdown} (${dateLabel})`;
 }
+
+/** Common reset periods (ms) for use with formatCountdown's periodMs param */
+export const RESET_PERIOD = {
+  FIVE_HOURS: 5 * 60 * 60 * 1000,
+  SEVEN_DAYS: 7 * 24 * 60 * 60 * 1000,
+} as const;
 
 export function getQuotaColor(fraction: number): {
   bg: string;

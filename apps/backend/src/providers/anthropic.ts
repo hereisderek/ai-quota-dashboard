@@ -87,6 +87,28 @@ export class AnthropicProvider implements IProvider {
     return null;
   }
 
+  /**
+   * Roll a stale resets_at timestamp forward by periodMs until it's in the future.
+   * Returns an ISO string of the next future reset, or null if input is null/invalid.
+   */
+  private computeNextReset(resetsAt: string | null | undefined, periodMs: number): string | null {
+    if (!resetsAt) return null;
+    const resetTime = new Date(resetsAt).getTime();
+    if (isNaN(resetTime)) return null;
+
+    const now = Date.now();
+    if (resetTime > now) return resetsAt; // already in the future
+
+    // Roll forward by the period until we get a future time
+    const elapsed = now - resetTime;
+    const periodsNeeded = Math.ceil(elapsed / periodMs);
+    const nextReset = new Date(resetTime + periodsNeeded * periodMs);
+    return nextReset.toISOString();
+  }
+
+  private static readonly FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  private static readonly SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
   private buildClaudeSubscriptionSnapshot(account: AccountRow, claudeData: any): QuotaSnapshot {
     const oauth = claudeData.oauthAccount || {};
     const usageWrapper = claudeData.cachedUsageUtilization || {};
@@ -96,31 +118,38 @@ export class AnthropicProvider implements IProvider {
     const limits = util.limits || [];
     const tokenStats = claudeData.tokenStats;
 
+    // Also extract from the limits array for better data when available
+    const sessionLimit = limits.find((l: any) => l.kind === 'session' || l.group === 'session');
+    const weeklyLimit = limits.find((l: any) => l.kind === 'weekly_all' || l.group === 'weekly');
+
     const buckets: BucketInfo[] = [];
 
     // 1. 5-Hour Session Window
     const fiveHourUsed = typeof fiveHour.utilization === 'number' ? fiveHour.utilization : 0;
     const fiveHourRemaining = Math.max(0, 1 - (fiveHourUsed / 100));
+    const fiveHourResetRaw = fiveHour.resets_at || sessionLimit?.resets_at || null;
     buckets.push({
       modelId: 'claude-5h-session',
       tokenType: 'MESSAGES',
       remainingFraction: fiveHourRemaining,
       remainingAmount: Math.round(100 - fiveHourUsed),
       limitAmount: 100,
-      resetTime: fiveHour.resets_at || null,
+      resetTime: this.computeNextReset(fiveHourResetRaw, AnthropicProvider.FIVE_HOURS_MS),
       usedPercent: Math.round(fiveHourUsed)
     });
 
     // 2. 7-Day Weekly Allowance
     const sevenDayUsed = typeof sevenDay.utilization === 'number' ? sevenDay.utilization : 0;
     const sevenDayRemaining = Math.max(0, 1 - (sevenDayUsed / 100));
+    const sevenDayResetRaw = sevenDay.resets_at || weeklyLimit?.resets_at || null;
+    const sevenDayResetTime = this.computeNextReset(sevenDayResetRaw, AnthropicProvider.SEVEN_DAYS_MS);
     buckets.push({
       modelId: 'claude-7d-weekly',
       tokenType: 'TOKENS',
       remainingFraction: sevenDayRemaining,
       remainingAmount: Math.round(100 - sevenDayUsed),
       limitAmount: 100,
-      resetTime: sevenDay.resets_at || null,
+      resetTime: sevenDayResetTime,
       usedPercent: Math.round(sevenDayUsed)
     });
 
@@ -132,7 +161,7 @@ export class AnthropicProvider implements IProvider {
         remainingFraction: sevenDayRemaining,
         remainingAmount: tokenStats.totalOutputTokens,
         limitAmount: null,
-        resetTime: sevenDay.resets_at || null,
+        resetTime: sevenDayResetTime,
         usedPercent: Math.round(sevenDayUsed)
       });
       buckets.push({
@@ -141,7 +170,7 @@ export class AnthropicProvider implements IProvider {
         remainingFraction: sevenDayRemaining,
         remainingAmount: tokenStats.totalProcessedTokens,
         limitAmount: null,
-        resetTime: sevenDay.resets_at || null,
+        resetTime: sevenDayResetTime,
         usedPercent: Math.round(sevenDayUsed)
       });
     }

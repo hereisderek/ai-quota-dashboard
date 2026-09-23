@@ -1,7 +1,7 @@
 import React from 'react';
 import { Users, Cpu, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Account } from '../types';
-import { formatCountdown } from '../utils';
+import { formatCountdown, RESET_PERIOD } from '../utils';
 
 interface OverviewStatsProps {
   accounts: Account[];
@@ -16,10 +16,28 @@ export const OverviewStats: React.FC<OverviewStatsProps> = ({ accounts }) => {
   const criticalBuckets = allBuckets.filter(b => b.remainingFraction <= 0.2);
   const isHealthy = criticalBuckets.length === 0;
 
-  // Find earliest reset time
+  // Find earliest reset time, rolling stale periodic resets forward
+  const now = Date.now();
+  const computeNextReset = (resetIso: string, periodMs?: number): number => {
+    let t = new Date(resetIso).getTime();
+    if (t <= now && periodMs && periodMs > 0) {
+      const periodsNeeded = Math.ceil((now - t) / periodMs);
+      t = t + periodsNeeded * periodMs;
+    }
+    return t;
+  };
+
   const upcomingResets = allBuckets
-    .filter(b => b.resetTime && new Date(b.resetTime).getTime() > Date.now())
-    .map(b => new Date(b.resetTime!).getTime())
+    .filter(b => b.resetTime)
+    .map(b => {
+      const period = b.modelId.includes('5h') || b.modelId.includes('session')
+        ? RESET_PERIOD.FIVE_HOURS
+        : b.modelId.includes('7d') || b.modelId.includes('weekly') || b.modelId.includes('claude-output') || b.modelId.includes('claude-total')
+          ? RESET_PERIOD.SEVEN_DAYS
+          : undefined;
+      return computeNextReset(b.resetTime!, period);
+    })
+    .filter(t => t > now)
     .sort((a, b) => a - b);
 
   const nearestResetIso = upcomingResets.length > 0 ? new Date(upcomingResets[0]).toISOString() : null;

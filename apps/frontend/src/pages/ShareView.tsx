@@ -13,7 +13,7 @@ import {
   Zap
 } from 'lucide-react';
 import { ShareData } from '../types';
-import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
+import { formatCountdown, getQuotaColor, formatModelName, RESET_PERIOD } from '../utils';
 import { ProviderIcon, getProviderBrand } from '../components/ProviderIcon';
 
 interface ShareViewProps {
@@ -239,7 +239,12 @@ export const ShareView: React.FC<ShareViewProps> = ({ slug }) => {
                             [...(acc.buckets || [])].sort((a, b) => a.remainingFraction - b.remainingFraction).map((b, idx) => {
                               const colors = getQuotaColor(b.remainingFraction);
                               const remainingPercent = Math.round(b.remainingFraction * 100);
-                              const countdown = formatCountdown(b.resetTime);
+                              const period = b.modelId.includes('5h') || b.modelId.includes('session')
+                                ? RESET_PERIOD.FIVE_HOURS
+                                : b.modelId.includes('7d') || b.modelId.includes('weekly') || b.modelId.includes('claude-output') || b.modelId.includes('claude-total')
+                                  ? RESET_PERIOD.SEVEN_DAYS
+                                  : undefined;
+                              const countdown = formatCountdown(b.resetTime, period);
 
                               return (
                                 <div

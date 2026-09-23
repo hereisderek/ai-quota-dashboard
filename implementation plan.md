@@ -204,3 +204,34 @@ ai-quota-dashboard/
 - **Docker Re-mount Test**: Add an account via UI, shut down container, delete container, re-mount the same `data/` folder in a new container, and verify all accounts, tokens, and history are preserved without re-authenticating.
 - **Google OAuth Verification**: Trigger the OAuth flow from UI, authorize with Google, verify automated redirect, token persistence in `/data/accounts.json`, and quota extraction from `cloudcode-pa.googleapis.com`.
 - **Live WebSocket Test**: Verify live status broadcasting when polling triggers or upon manual refresh button click.
+
+---
+
+## Future Roadmap: Multi-Platform Hosting (Cloudflare Workers + D1, Vercel)
+
+**Status: not started — scoped and planned, implementation deferred.**
+
+**Goal:** support three deployment targets from one codebase — the existing Docker/self-host path (unchanged), Cloudflare Workers with a D1 database, and Vercel. All three stay supported; this is additive, not a replacement.
+
+### Why this isn't a small change
+The current backend is wired to one deployment shape: a long-lived Node process, `node:sqlite` (synchronous, in-process file DB), a `setInterval` polling scheduler, and an in-memory WebSocket broadcast hub (`Set<WebSocket>`). None of that runs on Cloudflare Workers (no persistent process, no filesystem, no native `node:sqlite`) or fits Vercel's serverless model cleanly. Two smaller features also have no serverless equivalent: the Anthropic provider's `~/.claude.json` host-file auto-detect, and the disk-based dynamic plugin loader (`providers/index.ts`'s `loadExternalPlugins`).
+
+### Locked-in design decisions
+1. **All three targets stay supported** — Docker/self-host, Cloudflare, Vercel. No target is dropped.
+2. **Freshness model changes for everyone, not just serverless targets**: drop the background `setInterval` scheduler (`services/scheduler.ts`) and the WebSocket push (`services/websocket.ts`) entirely. Quota freshness becomes pull-based — the frontend keeps polling `GET /api/accounts` (it already does, every 30s as a fallback; this becomes the primary and only mechanism), and the backend does a live provider fetch only when the account's `last_polled_at` is older than the configured poll interval (debounce), otherwise it serves the cached DB row. `POST /api/accounts/:id/refresh` / `/refresh-all` keep working by forcing the fetch (bypassing the debounce). This removes the platform-specific blocker (timers, live sockets) uniformly, and is simpler than the current design.
+3. **Unportable features get a replacement, not a removal**: the `~/.claude.json` auto-detect gains a manual "paste the file contents" field on the Anthropic provider (works on every target; self-host keeps the automatic FS read too); the disk-scanning plugin loader is replaced by a static, compile-time provider registry (add a file under `providers/`, register it with one line, rebuild — no runtime filesystem scan on any target).
+
+### Architecture direction
+- **Routing**: migrate Fastify → **Hono**. Hono ships official adapters for Node (`@hono/node-server`), Cloudflare Workers (native), and Vercel (`hono/vercel`) — one route/handler codebase, three thin bootstrap files (`index.ts` for Node, `entry.worker.ts` for Cloudflare, `entry.vercel.ts` for Vercel).
+- **Database**: one SQLite-flavored schema and set of SQL queries, three adapters behind a small `DbAdapter` interface (`exec` / `prepare().get|all|run`, all async): `node-sqlite` (wraps today's `DatabaseSync`, self-host), `d1` (wraps a Cloudflare D1 binding), `turso` (wraps `@libsql/client`, hosted libSQL over HTTP, for Vercel — chosen over Vercel/Neon Postgres specifically to avoid a second SQL dialect, since Turso speaks the same SQLite dialect as the other two targets). Repos in `db/index.ts` / `db/auth.ts` become factory functions parameterized by the adapter, attached to the request context per-platform, instead of bare module-level singletons.
+- **Deployment artifacts to add**: `wrangler.toml` (D1 binding + static asset binding) for Cloudflare; `vercel.json` for Vercel; a shared `db/schema.sql` extracted from `initSchema()` so all three targets bootstrap from one schema definition.
+
+### Phased implementation plan (each phase independently verifiable via `npm run build` / `npm test` / a manual click-through)
+1. DB adapter abstraction — introduce `DbAdapter`, `node-sqlite` adapter, convert repos to async factories (self-host only at this point).
+2. Kill the scheduler + WebSocket hub, add debounced on-read polling (`services/quotaPoll.ts`), drop the WS client from `useQuotaStream.ts`.
+3. Fastify → Hono migration (self-host still).
+4. Cloudflare Workers target: `d1` adapter, `entry.worker.ts`, `wrangler.toml`. Verify locally with `wrangler dev --local`.
+5. Vercel target: `turso` adapter, `entry.vercel.ts`, `vercel.json`. Verify locally with `vercel dev` against a dev Turso DB.
+6. Unportable-feature alternatives (Anthropic paste-in field, static provider registry) + README updates documenting all three deployment paths.
+
+**Note:** actual deployment to production Cloudflare/Vercel accounts is a separate, explicit step outside this implementation work, per this repo's release-cicd conventions (tag-gated, requires approval).

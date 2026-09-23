@@ -17,7 +17,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { Account } from '../types';
-import { formatCountdown, getQuotaColor, formatModelName } from '../utils';
+import { formatCountdown, getQuotaColor, formatModelName, RESET_PERIOD } from '../utils';
 import { ProviderIcon, getProviderBrand } from './ProviderIcon';
 
 interface AccountCardProps {
@@ -193,7 +193,12 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onRefresh, on
             sortedBuckets.map((bucket, idx) => {
               const colors = getQuotaColor(bucket.remainingFraction);
               const remainingPercent = Math.round(bucket.remainingFraction * 100);
-              const countdown = formatCountdown(bucket.resetTime);
+              const period = bucket.modelId.includes('5h') || bucket.modelId.includes('session')
+                ? RESET_PERIOD.FIVE_HOURS
+                : bucket.modelId.includes('7d') || bucket.modelId.includes('weekly') || bucket.modelId.includes('claude-output') || bucket.modelId.includes('claude-total')
+                  ? RESET_PERIOD.SEVEN_DAYS
+                  : undefined;
+              const countdown = formatCountdown(bucket.resetTime, period);
 
               return (
                 <div

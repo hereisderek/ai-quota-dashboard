@@ -184,6 +184,14 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
 
                   <button
+                    onClick={() => { setUserMenuOpen(false); onOpenSettings(); }}
+                    className="w-full px-3 py-2 text-left flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Change Password & Settings</span>
+                  </button>
+
+                  <button
                     onClick={() => { setUserMenuOpen(false); onOpenShareModal(); }}
                     className="w-full px-3 py-2 text-left flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
                   >

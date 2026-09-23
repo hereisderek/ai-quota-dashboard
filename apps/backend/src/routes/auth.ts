@@ -287,6 +287,39 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Admin: Reset User Password (generates a secure random password and returns it)
+   */
+  fastify.post('/api/auth/users/:id/reset-password', async (req, reply) => {
+    if (!req.user || req.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Administrator privileges required' });
+    }
+
+    const { id } = req.params as { id: string };
+    const targetUser = userRepo.getById(id);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'User not found' });
+    }
+
+    // Generate a secure, readable random password (e.g. 12 chars with upper, lower, numbers)
+    const charset = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let tempPassword = '';
+    const randomBytes = crypto.randomBytes(12);
+    for (let i = 0; i < 12; i++) {
+      tempPassword += charset[randomBytes[i] % charset.length];
+    }
+
+    // Update password in database and invalidate target user's active sessions
+    userRepo.updatePassword(id, tempPassword);
+
+    return {
+      success: true,
+      message: `Password for '${targetUser.username}' has been reset`,
+      username: targetUser.username,
+      temporaryPassword: tempPassword
+    };
+  });
+
+  /**
    * Admin: Delete User
    */
   fastify.delete('/api/auth/users/:id', async (req, reply) => {

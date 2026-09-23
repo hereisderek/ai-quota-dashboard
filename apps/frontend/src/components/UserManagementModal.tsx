@@ -10,7 +10,9 @@ import {
   Share2, 
   Check, 
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  KeyRound,
+  Copy
 } from 'lucide-react';
 import { ManagedUser, User } from '../types';
 
@@ -40,6 +42,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
   // User deletion confirmation state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Reset password state & popup
+  const [isResettingId, setIsResettingId] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{ username: string; tempPass: string } | null>(null);
+  const [copiedPass, setCopiedPass] = useState(false);
 
   // Fetch users list from backend
   const fetchUsers = useCallback(async () => {
@@ -147,6 +154,32 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
   };
 
+  // Handle Admin Reset User Password
+  const handleResetPassword = async (userId: string) => {
+    setError(null);
+    setSuccessMsg(null);
+    setIsResettingId(userId);
+    try {
+      const res = await fetch(`/api/auth/users/${userId}/reset-password`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Failed to reset password');
+      }
+      setResetResult({
+        username: data.username,
+        tempPass: data.temporaryPassword
+      });
+      setCopiedPass(false);
+      setSuccessMsg(`Password for '${data.username}' has been successfully reset.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsResettingId(null);
+    }
+  };
+
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -213,6 +246,44 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             <button onClick={() => setSuccessMsg(null)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
               <X className="w-3.5 h-3.5" />
             </button>
+          </div>
+        )}
+
+        {/* Temporary Password Display Banner */}
+        {resetResult && (
+          <div className="mx-5 mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 animate-fade-in space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+                <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>Generated Password for @{resetResult.username}</span>
+              </div>
+              <button 
+                onClick={() => setResetResult(null)} 
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+              Copy and share this temporary password with the user. It will not be shown again.
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-amber-300 dark:border-amber-700/80 font-mono text-sm font-bold text-zinc-900 dark:text-zinc-100 select-all">
+                {resetResult.tempPass}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(resetResult.tempPass);
+                  setCopiedPass(true);
+                  setTimeout(() => setCopiedPass(false), 2500);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-sm transition active:scale-95 shrink-0"
+              >
+                {copiedPass ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedPass ? 'Copied!' : 'Copy'}</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -388,20 +459,32 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => {
-                            if (!isCurrentSelf) setConfirmDeleteId(u.id);
-                          }}
-                          disabled={isCurrentSelf}
-                          title={isCurrentSelf ? 'You cannot delete your own admin account' : 'Delete user'}
-                          className={`p-1.5 rounded-lg transition ${
-                            isCurrentSelf
-                              ? 'text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
-                              : 'text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                          }`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleResetPassword(u.id)}
+                            disabled={isResettingId === u.id}
+                            title="Reset password (generate temporary password)"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-zinc-200/80 dark:border-zinc-800 transition disabled:opacity-50"
+                          >
+                            <KeyRound className={`w-3.5 h-3.5 ${isResettingId === u.id ? 'animate-spin text-amber-500' : ''}`} />
+                            <span>Reset Password</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (!isCurrentSelf) setConfirmDeleteId(u.id);
+                            }}
+                            disabled={isCurrentSelf}
+                            title={isCurrentSelf ? 'You cannot delete your own admin account' : 'Delete user'}
+                            className={`p-1.5 rounded-lg transition ${
+                              isCurrentSelf
+                                ? 'text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
+                                : 'text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                            }`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
